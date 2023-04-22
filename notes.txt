@@ -1,0 +1,19 @@
+- Funcy library allows to use standard functional programming functions such as flatten, map or first in python
+
+- Easydict allows to create dict objects where instead of d["key"] we use d.key and we also can access elements with
+a default value if key does not exist such as d.get("key", default)
+
+- We can access classes by using eval function like for example
+    encoder = eval(encoder_name) 
+  is equivalent to 
+    if encoder_name == "NaiveAbsolute":
+        encoder = NaiveAbsolute
+    elif (...)
+
+- dataclasses are classes that instead of __init__(args) have args directly and if needed a __post_init__
+
+- en token classification 
+# NER: if the label is B-XXX we change it to I-XXX
+# print(label)
+# if label % 2 == 1:
+#     label += 1
