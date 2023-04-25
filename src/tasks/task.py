@@ -32,14 +32,14 @@ def sample_dataset(dataset,n=10000, n_eval=1000, oversampling=None):
 
 @dataclass
 class Task:
-    dataset: Dataset = None
-    name: str = ""
-    tokenizer: PreTrainedTokenizerBase = None
-    tokenizer_kwargs: ... = fdict(padding="max_length", max_length=256,truncation=True)
-    max_rows:int=None
-    max_rows_eval:int=None
-    oversampling:int=None
-    main_split:str="train"
+    dataset = None
+    name = ""
+    tokenizer = None
+    tokenizer_kwargs = fdict(padding="max_length", max_length=256, truncation=True)
+    max_rows = None
+    max_rows_eval = None
+    oversampling = None
+    main_split = "train"
     
     def __hash__(self):
         return hash(str(self.dataset.__dict__))

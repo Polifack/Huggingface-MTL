@@ -1,1 +1,4 @@
 tmp
+models
+src/__pycache__
+notes.txt

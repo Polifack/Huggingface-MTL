@@ -48,7 +48,6 @@ class Adapter(transformers.PreTrainedModel):
     def _init_weights(*args):
         pass 
 
-
 class ConditionalLayerNorm(torch.nn.Module):
     def __init__(self, LN, Z_i, drop_probability=0.0):
         super().__init__()
@@ -121,12 +120,17 @@ class Model(transformers.PreTrainedModel):
         
         self.models = {}
         self.shared_encoder = None
+        
+        # get tasks
         self.task_names = [t.name for t in tasks]
         self.task_labels_list = [t.get_labels() for t in tasks]
-        self.batch_truncation = args.get('batch_truncation',True)
-        self.add_cls = args.get('add_cls',True)
-        self.add_cln = args.get('add_cln',False)
-        self.drop_probability = args.get('drop_probability',0.1)
+        
+        # get model parameters
+        self.batch_truncation = args.get('batch_truncation', True)
+        self.add_cls = args.get('add_cls', True)
+        self.add_cln = args.get('add_cln', False)
+        self.drop_probability = args.get('drop_probability', 0.1)
+        
         task_models_list = []
         
         for i, task in enumerate(tasks):
@@ -230,7 +234,6 @@ class Model(transformers.PreTrainedModel):
 
         return m_i, adapter
 
-
 class NLPDataCollator:
     def __init__(self, tasks):
         self.tasks = tasks
@@ -262,7 +265,6 @@ class DataLoaderWithTaskname:
     def __iter__(self):
         for batch in self.data_loader:
             yield batch
-
 
 class MultitaskDataloader:
     """
@@ -316,13 +318,16 @@ class Trainer(transformers.Trainer):
             do_train = True
             per_device_train_batch_size = 8
             save_steps = 1000000
-            label_names = ["labels"]
             include_inputs_for_metrics = True
             
         default, hparams_dict = to_dict(default), to_dict(hparams)
+
+
+        ## Load pre-trained transformer model        
+
         self.p = hparams_dict.get('p', 1)
-        self.num_proc = hparams_dict.get('num_proc',None)
-        self.batched = hparams_dict.get('batched',False)
+        self.num_proc = hparams_dict.get('num_proc' ,None)
+        self.batched = hparams_dict.get('batched', False)
 
         trainer_args = transformers.TrainingArguments(
             **{**default, **fc.project(hparams_dict, dir(transformers.TrainingArguments))},
@@ -330,21 +335,22 @@ class Trainer(transformers.Trainer):
     
         if not tokenizer:
             tokenizer = AutoTokenizer.from_pretrained(hparams_dict["model_name"])
-
+        
+        if 'max_length' in hparams_dict:
+            for t in tasks:
+                t.tokenizer_kwargs['max_length'] = hparams_dict['max_length']
+        
         super().__init__(
             model,
             trainer_args,
-            tokenizer=tokenizer,
-            compute_metrics=SequenceClassification.compute_metrics,
-            *args,
-            **kwargs,
+            tokenizer = tokenizer,
+            compute_metrics = SequenceClassification.compute_metrics
         )
 
-        if 'max_length' in kwargs:
-            for t in tasks:
-                t.tokenizer_kwargs['max_length']=kwargs['max_length']
-
         self.data_collator = NLPDataCollator(tasks)
+
+        ## Load tastks
+
         self.tasks = tasks
         self.tokenizer = tokenizer
         self.processed_tasks = self.preprocess_tasks(tasks, self.tokenizer)
@@ -380,13 +386,14 @@ class Trainer(transformers.Trainer):
 
     def evaluate(self,metric_key_prefix="eval", **kwargs):
         try:
-            i=[i for (i,c) in enumerate(self.callback_handler.callbacks) if 'NotebookProgress' in str(c)][0]
+            i = [i for (i,c) in enumerate(self.callback_handler.callbacks) if 'NotebookProgress' in str(c)][0]
             self.callback_handler.callbacks[i].training_tracker.write_line = fc.partial(
                 self.write_line, self.callback_handler.callbacks[i].training_tracker
             )
         except:
             logging.info('No training_tracker')
         outputs = []
+        
         for i, task in enumerate(self.tasks):
             print("[*] Evaluating task", i, "=>", task.name)
             self.compute_metrics = task.compute_metrics
