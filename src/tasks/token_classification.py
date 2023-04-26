@@ -3,6 +3,7 @@ from datasets import Dataset
 from transformers import DataCollatorForTokenClassification
 import evaluate
 import funcy as fc
+from frozendict import frozendict as fdict
 from dataclasses import dataclass
 from .task import Task
 
@@ -18,8 +19,9 @@ class TokenClassification(Task):
     dataset: Dataset = None
     metric:... = evaluate.load("seqeval")
     tokens: str = 'tokens'
-    y: str = 'labels'
+    y:      str = 'target'
     num_labels: int = None
+    tokenizer_kwargs: fdict = fdict(padding="max_length", max_length=256, truncation=True)
 
     @staticmethod
     def _align_labels_with_tokens(labels, word_ids):
@@ -52,14 +54,14 @@ class TokenClassification(Task):
 
     def __post_init__(self):
         super().__post_init__()
-        if not self.num_labels:
-            # regression check
-            if "float" in self.dataset[self.main_split].features[self.y].dtype:
-                self.num_labels = 1
-            else:
-                self.num_labels = len(self.dataset[self.main_split][self.y])
         
-        self.label_names = [f"{i}" for i in range(self.num_labels)]
+        target = self.dataset[self.main_split].features[self.y]
+        if not self.num_labels:
+            self.num_labels = 1 if "float" in target.dtype else target.feature.num_classes
+        
+        print("Labels for task:")
+        print(target.feature.names)
+        self.label_names = target.feature.names
 
     def set_tokenizer(self, tokenizer):
         self.tokenizer = tokenizer
@@ -77,13 +79,14 @@ class TokenClassification(Task):
             is_split_into_words=True, 
             **self.tokenizer_kwargs
         )
-        
+
         all_labels = examples["labels"]
         new_labels = []
         
         for i, labels in enumerate(all_labels):
             word_ids = tokenized_inputs.word_ids(i)
             new_labels.append(self._align_labels_with_tokens(labels, word_ids))
+        
         tokenized_inputs["labels"] = new_labels
         outputs = tokenized_inputs
         
@@ -91,6 +94,7 @@ class TokenClassification(Task):
             outputs={k:v[0] for k,v in outputs.items()}
         outputs['task']=[self.index]*get_len(outputs)
         
+        # print a sample
         return outputs
 
     def compute_metrics(self, eval_pred):
@@ -100,12 +104,19 @@ class TokenClassification(Task):
         true_labels = [
             [self.label_names[l] for l in label if l != -100] for label in labels
         ]
+
         true_predictions = [
             [self.label_names[p] for (p, l) in zip(prediction, label) if l != -100]
             for prediction, label in zip(predictions, labels)
         ]
+
+        print("Computing metrics...")
+        print("*** example:")
+        print("labels:",true_labels[0:5])
+        print("predictions:", true_predictions[0:5])
+        print("***")
         all_metrics = self.metric.compute(
-            predictions=true_predictions, references=true_labels
+            predictions = true_predictions, references = true_labels
         )
         meta = {"name": self.name, "size": len(predictions), "index": self.index}
         metrics = {k.replace("overall_",""):v for k,v in all_metrics.items() if "overall" in k}

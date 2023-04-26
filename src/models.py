@@ -7,6 +7,7 @@ from transformers.data.data_collator import InputDataClass
 from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data.sampler import RandomSampler, WeightedRandomSampler
 from typing import List, Union, Dict
+from transformers.trainer import EvalLoopOutput
 from transformers import (
     EncoderDecoderModel,
     DataCollatorForSeq2Seq,
@@ -137,14 +138,17 @@ class Model(transformers.PreTrainedModel):
             print("[*] Found task",i,"=>",task.name)
             model_type = eval(f"AutoModelFor{task.task_type}")
 
-            nl = {a: getattr(task, a) for a in ('num_labels','problem_type')
-                if hasattr(task, a)
-            }
+            nl = {a: getattr(task, a) for a in ('num_labels', 'problem_type') if hasattr(task, a)}
+            
             model = deep_copy_cache(model_type.from_pretrained)(args.model_name,
                 ignore_mismatched_sizes=True, **nl)
 
-            labels = getattr(task.dataset["train"].features[task.y],"names",None)
-            key = tuple([normalize_label(x) for x in labels]) if labels else None
+            #print("Task features (train):", task.dataset["train"].features)
+            #all_labels = task.dataset["train"][task.y]
+            #labels = np.unique(all_labels)
+            
+            labels = getattr(task.dataset["train"].features[task.y], "names", None)
+            key    = tuple([normalize_label(x) for x in labels]) if labels else None
 
             if key and key not in self.models:
                 self.models[key] = model 
@@ -195,6 +199,7 @@ class Model(transformers.PreTrainedModel):
 
     def batch_unpad(self,kwargs,task_index):
         """Remove excess padding (improves speed)"""
+
         batch_max_size=kwargs['attention_mask'].sum(axis=1).max().item()
         kwargs['attention_mask']=kwargs['attention_mask'][:,:batch_max_size].contiguous() 
         kwargs['input_ids']=kwargs['input_ids'][:,:batch_max_size].contiguous() 
@@ -209,7 +214,6 @@ class Model(transformers.PreTrainedModel):
             kwargs=self.batch_unpad(kwargs, task_index)
         y = self.task_models_list[task_index](**kwargs)
         return y
-
 
     def factorize(self, task_index=0, tasks=[]):
         m_i = self.task_models_list[task_index]
@@ -318,10 +322,11 @@ class Trainer(transformers.Trainer):
             do_train = True
             per_device_train_batch_size = 8
             save_steps = 1000000
+            label_names = ["labels"]
             include_inputs_for_metrics = True
-            
+        
+        print("label_names:",default.label_names)
         default, hparams_dict = to_dict(default), to_dict(hparams)
-
 
         ## Load pre-trained transformer model        
 
@@ -399,8 +404,8 @@ class Trainer(transformers.Trainer):
             self.compute_metrics = task.compute_metrics
             output = transformers.Trainer.evaluate(
                 self,
-                eval_dataset=dict([fc.nth(i, (self.eval_dataset if metric_key_prefix=="eval" else self.test_dataset).items())]),
-                metric_key_prefix=metric_key_prefix
+                eval_dataset = dict([fc.nth(i, (self.eval_dataset if metric_key_prefix=="eval" else self.test_dataset).items())]),
+                metric_key_prefix = metric_key_prefix
             )
             if "Accuracy" not in output:
                 output["Accuracy"] = np.nan
@@ -496,8 +501,11 @@ class Trainer(transformers.Trainer):
                     features_dict[task]=task.processed_features
                     continue
                 task.set_tokenizer(tokenizer)
+
+                # rename the 'target' column to 'labels'
                 if hasattr(task, "y") and task.y != "labels":
                     task.dataset = task.dataset.rename_column(task.y, "labels")
+                
                 for split in task.dataset:
                     tdp=task.dataset[split]
                     if 'task' in tdp.features:
@@ -508,18 +516,20 @@ class Trainer(transformers.Trainer):
                 features_dict[task] = {}
                 for phase, phase_dataset in task.dataset.items():
                     phase_dataset.index = i
-                    
+
                     features_dict[task][phase] = phase_dataset.map(
                         task.preprocess_function, 
-                        batched=self.batched, 
-                        load_from_cache_file=True,
-                        num_proc=self.num_proc
+                        batched = self.batched, 
+                        load_from_cache_file = True,
+                        num_proc = self.num_proc
                     )
 
                     features_dict[task][phase].set_format(
                         type="torch", columns=["input_ids", "attention_mask", "labels", "task"]
                     )
-                task.processed_features=features_dict[task] #added
+                
+                task.processed_features = features_dict[task] # cache the processed features
+        
         return features_dict
 
 def Model_Trainer(tasks, args):

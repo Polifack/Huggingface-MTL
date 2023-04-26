@@ -34,7 +34,7 @@
             "train_file": "./data/train.conllu",
             "test_file": "./data/test.conllu",
             "eval_file": "./data/dev.conllu",
-            "label_idx": [4, 7],
+            "label_idx": [3, 6],
             "tokens_idx": 1
         }
     ]

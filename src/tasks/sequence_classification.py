@@ -23,19 +23,22 @@ class SequenceClassification(Task):
     data_collator = DefaultDataCollator()
     s1: str = "sentence1"
     s2: str = "sentence2"
-    y: str = "labels"
+    y:  str = "target"
     num_labels: int = None
 
     def __post_init__(self):
         super().__post_init__()
         if not self.num_labels:
             target = self.dataset[self.main_split].features[self.y]
+            
             if "float" in target.dtype:
                 self.num_labels = 1
-            elif hasattr(target,'num_classes'):
-                self.num_labels=target.num_classes
+            
+            elif hasattr(target, 'num_classes'):
+                self.num_labels = target.num_classes
+            
             else:
-                self.num_labels=max(fc.flatten(self.dataset[self.main_split][self.y]))+1
+                self.num_labels = max(fc.flatten(self.dataset[self.main_split][self.y]))+1
 
         if type(self.dataset[self.main_split][self.y][0])==list and self.task_type=="SequenceClassification":
             self.problem_type="multi_label_classification"
@@ -76,6 +79,7 @@ class SequenceClassification(Task):
             avg={"average":"macro"}
         else:
             metric = evaluate.load("glue", "stsb")
+        
         meta = {"name": self.name, "size": len(predictions), "index": self.index}
         metrics = metric.compute(predictions=predictions, references=labels,**avg)
         self.results+=[metrics]

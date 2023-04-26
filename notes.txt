@@ -1,37 +1,8 @@
-- Funcy library allows to use standard functional programming functions such as flatten, map or first in python
+- Consideration for NER datasets for token classification tasks:
+  # NER: if the label is B-XXX we change it to I-XXX
+  # print(label)
+  # if label % 2 == 1:
+  #     label += 1
 
-- Easydict allows to create dict objects where instead of d["key"] we use d.key and we also can access elements with
-a default value if key does not exist such as d.get("key", default)
-
-- We can access classes by using eval function like for example
-    encoder = eval(encoder_name) 
-  is equivalent to 
-    if encoder_name == "NaiveAbsolute":
-        encoder = NaiveAbsolute
-    elif (...)
-
-- dataclasses are classes that instead of __init__(args) have args directly and if needed a __post_init__
-
-- en token classification 
-# NER: if the label is B-XXX we change it to I-XXX
-# print(label)
-# if label % 2 == 1:
-#     label += 1
-
-The training gives this warning
-Some weights of the model checkpoint at roberta-base were not used when initializing RobertaForTokenClassification: 
-    ['lm_head.dense.weight', 'lm_head.layer_norm.bias', 'lm_head.bias', 'lm_head.layer_norm.weight', 'lm_head.dense.bias']
-- This IS expected if you are initializing RobertaForTokenClassification from the checkpoint of a model trained on another 
-  task or with another architecture (e.g. initializing a BertForSequenceClassification model from a BertForPreTraining model).
-- This IS NOT expected if you are initializing RobertaForTokenClassification from the checkpoint of a model that you expect 
-  to be exactly identical (initializing a BertForSequenceClassification model from a BertForSequenceClassification model).
-
-Some weights of RobertaForTokenClassification were not initialized from the model checkpoint at roberta-base and are newly initialized: 
-  ['classifier.weight', 'classifier.bias']
-You should probably TRAIN this model on a down-stream task to be able to use it for predictions and inference.
-
-
-fp16 or bf16 or half_precision_backend?
-
-
-The output metrics are not correct 100% (for example, we dont output accuracy metric?)
+- Quantization:
+  fp16 or bf16 or half_precision_backend?
