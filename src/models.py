@@ -87,6 +87,81 @@ class CLSEmbedding(nn.Module):
             x[:, 0, :] = x[:, 0, :] + self.cls.to(x.device)
         return x
 
+class NLPDataCollator:
+    def __init__(self, tasks):
+        self.tasks = tasks
+
+    def __call__(
+        self, features: List[Union[InputDataClass, Dict]]
+    ) -> Dict[str, torch.Tensor]:
+        try:
+            task_index = features[0]["task"].flatten()[0].item()
+        except:
+            print("features:",features)
+            task_index = features[-1]["task"].flatten()[0].item()
+            
+        features = [{k:v for k,v in x.items() if k!='task'} for x in features]
+        collated = self.tasks[task_index].data_collator.__call__(features)
+        collated['task']=torch.tensor([task_index])
+        return collated
+
+class DataLoaderWithTaskname:
+    def __init__(self, task_name, data_loader):
+        self.task = task_name
+        self.data_loader = data_loader
+        self.batch_size = data_loader.batch_size
+        self.dataset = data_loader.dataset
+
+    def __len__(self):
+        return len(self.data_loader)
+
+    def __iter__(self):
+        for batch in self.data_loader:
+            yield batch
+
+class MultitaskDataloader:
+    """
+    Data loader that combines and samples from multiple single-task
+    data loaders.
+    """
+
+    def __init__(self, dataloader_dict, p=1):
+        self.dataloader_dict = dataloader_dict
+        N = max([len(x)**(1-p) for x in dataloader_dict.values()])
+        f_p = lambda x: int(N*x**p)
+
+        self.num_batches_dict = {
+            task_name: f_p(len(dataloader))
+            for task_name, dataloader in self.dataloader_dict.items()
+        }
+        self.task_name_list = list(self.dataloader_dict)
+        self.dataset = [None] * sum(
+            f_p(len(dataloader.dataset)) for dataloader in self.dataloader_dict.values()
+        )
+
+    def __len__(self):
+        return sum(self.num_batches_dict.values())
+
+    def __iter__(self):
+        """
+        For each batch, sample a task, and yield a batch from the respective
+        task Dataloader.
+        """
+        task_choice_list = []
+        for i, task_name in enumerate(self.task_name_list):
+            task_choice_list += [i] * self.num_batches_dict[task_name]
+        task_choice_list = np.array(task_choice_list)
+        np.random.shuffle(task_choice_list)
+        
+        dataloader_iter_dict = {
+            task_name: iter(dataloader)
+            for task_name, dataloader in self.dataloader_dict.items()
+        }
+
+        for task_choice in task_choice_list:
+            task_name = self.task_name_list[task_choice]
+            yield next(dataloader_iter_dict[task_name])
+
 def add_cls(model, Z_i, drop_probability=0.0):
     """model is a standard HF Transformer"""
     emb_name, emb_module = [(name,module) for name,module in model.named_modules() if isinstance(module,torch.nn.Embedding)][0]
@@ -115,6 +190,8 @@ def last_linear(classifier):
     L = list([m for m in classifier.modules() if type(m)==torch.nn.Linear])[-1]
     return L
 
+
+
 class Model(transformers.PreTrainedModel):
     def __init__(self, tasks, args):
         super().__init__(transformers.PretrainedConfig())
@@ -127,7 +204,7 @@ class Model(transformers.PreTrainedModel):
         self.task_labels_list = [t.get_labels() for t in tasks]
         
         # get model parameters
-        self.batch_truncation = args.get('batch_truncation', True)
+        self.batch_truncation = args.get('batch_truncation', False)
         self.add_cls = args.get('add_cls', True)
         self.add_cln = args.get('add_cln', False)
         self.drop_probability = args.get('drop_probability', 0.1)
@@ -139,9 +216,7 @@ class Model(transformers.PreTrainedModel):
             model_type = eval(f"AutoModelFor{task.task_type}")
 
             nl = {a: getattr(task, a) for a in ('num_labels', 'problem_type') if hasattr(task, a)}
-            
-            model = deep_copy_cache(model_type.from_pretrained)(args.model_name,
-                ignore_mismatched_sizes=True, **nl)
+            model = deep_copy_cache(model_type.from_pretrained)(args.model_name, ignore_mismatched_sizes=True, **nl)
 
             #print("Task features (train):", task.dataset["train"].features)
             #all_labels = task.dataset["train"][task.y]
@@ -203,6 +278,7 @@ class Model(transformers.PreTrainedModel):
         batch_max_size=kwargs['attention_mask'].sum(axis=1).max().item()
         kwargs['attention_mask']=kwargs['attention_mask'][:,:batch_max_size].contiguous() 
         kwargs['input_ids']=kwargs['input_ids'][:,:batch_max_size].contiguous() 
+        
         if len(kwargs['labels'].shape)>1 \
             and self.task_models_list[task_index].config.problem_type!="multi_label_classification":
             kwargs['labels']=kwargs['labels'][:,:batch_max_size].contiguous() 
@@ -211,7 +287,7 @@ class Model(transformers.PreTrainedModel):
     def forward(self, task, **kwargs):
         task_index = task[0].item()
         if self.batch_truncation:
-            kwargs=self.batch_unpad(kwargs, task_index)
+            kwargs = self.batch_unpad(kwargs, task_index)
         y = self.task_models_list[task_index](**kwargs)
         return y
 
@@ -238,105 +314,41 @@ class Model(transformers.PreTrainedModel):
 
         return m_i, adapter
 
-class NLPDataCollator:
-    def __init__(self, tasks):
-        self.tasks = tasks
-
-    def __call__(
-        self, features: List[Union[InputDataClass, Dict]]
-    ) -> Dict[str, torch.Tensor]:
-        try:
-            task_index = features[0]["task"].flatten()[0].item()
-        except:
-            print("features:",features)
-            task_index = features[-1]["task"].flatten()[0].item()
-            
-        features = [{k:v for k,v in x.items() if k!='task'} for x in features]
-        collated = self.tasks[task_index].data_collator.__call__(features)
-        collated['task']=torch.tensor([task_index])
-        return collated
-
-class DataLoaderWithTaskname:
-    def __init__(self, task_name, data_loader):
-        self.task = task_name
-        self.data_loader = data_loader
-        self.batch_size = data_loader.batch_size
-        self.dataset = data_loader.dataset
-
-    def __len__(self):
-        return len(self.data_loader)
-
-    def __iter__(self):
-        for batch in self.data_loader:
-            yield batch
-
-class MultitaskDataloader:
-    """
-    Data loader that combines and samples from multiple single-task
-    data loaders.
-    """
-
-    def __init__(self, dataloader_dict, p=1):
-        self.dataloader_dict = dataloader_dict
-        N=max([len(x)**(1-p) for x in dataloader_dict.values()])
-        f_p = lambda x: int(N*x**p)
-
-        self.num_batches_dict = {
-            task_name: f_p(len(dataloader))
-            for task_name, dataloader in self.dataloader_dict.items()
-        }
-        self.task_name_list = list(self.dataloader_dict)
-        self.dataset = [None] * sum(
-            f_p(len(dataloader.dataset)) for dataloader in self.dataloader_dict.values()
-        )
-
-    def __len__(self):
-        return sum(self.num_batches_dict.values())
-
-    def __iter__(self):
-        """
-        For each batch, sample a task, and yield a batch from the respective
-        task Dataloader.
-        """
-        task_choice_list = []
-        for i, task_name in enumerate(self.task_name_list):
-            task_choice_list += [i] * self.num_batches_dict[task_name]
-        task_choice_list = np.array(task_choice_list)
-        np.random.shuffle(task_choice_list)
-        dataloader_iter_dict = {
-            task_name: iter(dataloader)
-            for task_name, dataloader in self.dataloader_dict.items()
-        }
-        for task_choice in task_choice_list:
-            task_name = self.task_name_list[task_choice]
-            yield next(dataloader_iter_dict[task_name])
-
 
 class Trainer(transformers.Trainer):
     def __init__(self, model, tasks, hparams, tokenizer=None, *args, **kwargs):
         class default:
             output_dir = "./models/multitask_model"
-            evaluation_strategy = "epoch"
-            logging_strategy = "epoch"
             overwrite_output_dir = True
+            
             do_train = True
-            per_device_train_batch_size = 8
+            per_device_train_batch_size = 16
+            
+            do_eval  = True
+            per_device_eval_batch_size = 16
+            
+            evaluation_strategy = "steps"
+            eval_steps = 64
+
+            logging_strategy = "epoch"
+            logging_steps = 64
+            
             save_steps = 1000000
+            
             label_names = ["labels"]
             include_inputs_for_metrics = True
         
-        print("label_names:",default.label_names)
-        default, hparams_dict = to_dict(default), to_dict(hparams)
-
         ## Load pre-trained transformer model        
-
-        self.p = hparams_dict.get('p', 1)
+        default, hparams_dict = to_dict(default), to_dict(hparams)
+        self.p = hparams_dict.get('p', 0)
         self.num_proc = hparams_dict.get('num_proc' ,None)
         self.batched = hparams_dict.get('batched', False)
 
         trainer_args = transformers.TrainingArguments(
             **{**default, **fc.project(hparams_dict, dir(transformers.TrainingArguments))},
         )
+        ## Set the number of gpus (quick fix for now)
+        trainer_args._n_gpu = 1
     
         if not tokenizer:
             tokenizer = AutoTokenizer.from_pretrained(hparams_dict["model_name"])
@@ -352,29 +364,32 @@ class Trainer(transformers.Trainer):
             compute_metrics = SequenceClassification.compute_metrics
         )
 
+        self.per_device_train_batch_size = self.args.train_batch_size
         self.data_collator = NLPDataCollator(tasks)
 
         ## Load tastks
-
         self.tasks = tasks
         self.tokenizer = tokenizer
         self.processed_tasks = self.preprocess_tasks(tasks, self.tokenizer)
+        
         self.train_dataset = {
             task: dataset["train"]
             for task, dataset in self.processed_tasks.items()
         }
+
         self.eval_dataset = {
             task: dataset["validation"]
             for task, dataset in self.processed_tasks.items()
         }
+
         self.test_dataset = {
             task: dataset["test"]
             for task, dataset in self.processed_tasks.items()
         }
         
-        # We preventstrainer from automatically evaluating on each dataset:
-        # transformers.Trainer recognizes eval_dataset instances of "dict"
-        # But we use a custom "evaluate" function so that we can use different metrics for each task
+        # We prevent trainer from automatically evaluating on each dataset: transformers.Trainer recognizes 
+        # eval_dataset instances of "dict" but we use a custom "evaluate" function so that we can use 
+        # different metrics for each task
         self.eval_dataset = MappingProxyType(self.eval_dataset)
 
     @staticmethod
@@ -389,7 +404,8 @@ class Trainer(transformers.Trainer):
             other.inner_table[0] = columns
             other.inner_table.append([values.get(c, np.nan) for c in columns])
 
-    def evaluate(self,metric_key_prefix="eval", **kwargs):
+    def evaluate(self, metric_key_prefix="eval", **kwargs):
+        # logging
         try:
             i = [i for (i,c) in enumerate(self.callback_handler.callbacks) if 'NotebookProgress' in str(c)][0]
             self.callback_handler.callbacks[i].training_tracker.write_line = fc.partial(
@@ -397,24 +413,24 @@ class Trainer(transformers.Trainer):
             )
         except:
             logging.info('No training_tracker')
-        outputs = []
         
+        
+        outputs = []
         for i, task in enumerate(self.tasks):
             print("[*] Evaluating task", i, "=>", task.name)
+            
             self.compute_metrics = task.compute_metrics
-            output = transformers.Trainer.evaluate(
-                self,
-                eval_dataset = dict([fc.nth(i, (self.eval_dataset if metric_key_prefix=="eval" else self.test_dataset).items())]),
-                metric_key_prefix = metric_key_prefix
-            )
+            eval_dataset =  dict([fc.nth(i, (self.eval_dataset if metric_key_prefix == "eval" else self.test_dataset).items())])
+            output = transformers.Trainer.evaluate(self, eval_dataset = eval_dataset, metric_key_prefix = metric_key_prefix)
+            
             if "Accuracy" not in output:
                 output["Accuracy"] = np.nan
             outputs += [output]
         return fc.join(outputs) if metric_key_prefix!="test" else outputs
 
     def task_batch_size(self,task_name):
-        if hasattr(task_name, 'num_choices'):
-            return max(1, self.args.train_batch_size//task_name.num_choices)
+        if hasattr(task_name, 'num_choices'):            
+            return max(1, self.args.train_batch_size // task_name.num_choices)
         else:
             return self.args.train_batch_size
 
@@ -422,6 +438,7 @@ class Trainer(transformers.Trainer):
         """
         Create a single-task data loader that also yields task names
         """
+        print("asking for single train dataloader")
         if self.train_dataset is None:
             raise ValueError("Trainer: training requires a train_dataset.")
         train_sampler = (
@@ -448,6 +465,7 @@ class Trainer(transformers.Trainer):
         but an iterable that returns a generator that samples from each
         task Dataloader
         """
+        print("asking for multitask train dataloader")
         return MultitaskDataloader(
             {
                 task_name: self.get_single_train_dataloader(task_name, task_dataset)

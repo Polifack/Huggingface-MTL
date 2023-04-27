@@ -91,7 +91,7 @@ class TokenClassification(Task):
         outputs = tokenized_inputs
         
         if 'unsqueeze' in locals() and unsqueeze:
-            outputs={k:v[0] for k,v in outputs.items()}
+            outputs = {k:v[0] for k,v in outputs.items()}
         outputs['task']=[self.index]*get_len(outputs)
         
         # print a sample
@@ -99,6 +99,7 @@ class TokenClassification(Task):
 
     def compute_metrics(self, eval_pred):
         logits, labels = eval_pred.predictions, eval_pred.label_ids
+        print("logits&&labels = ",len(logits), len(labels))
         predictions = np.argmax(logits, axis=-1)
 
         true_labels = [
@@ -112,6 +113,7 @@ class TokenClassification(Task):
 
         print("Computing metrics...")
         print("*** example:")
+        print(len(true_labels), len(true_predictions))
         print("labels:",true_labels[0:5])
         print("predictions:", true_predictions[0:5])
         print("***")

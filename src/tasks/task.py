@@ -20,7 +20,7 @@ def oversample(dataset, n=2):
     )
     return dataset
 
-def sample_dataset(dataset,n=10000, n_eval=1000, oversampling=None):
+def sample_dataset(dataset, n=10000, n_eval=1000, oversampling=None):
     if oversampling and len(dataset['train'])<n:
         dataset=oversample(dataset, oversampling)
 
@@ -57,8 +57,8 @@ class Task:
 
         if not self.name:
             self.name = name
-        self.results=[]
-        self.dataset=sample_dataset(self.dataset,self.max_rows,self.max_rows_eval, self.oversampling)
+        self.results = []
+        self.dataset = sample_dataset(self.dataset, self.max_rows, self.max_rows_eval, self.oversampling)
     
     def check():
         return True

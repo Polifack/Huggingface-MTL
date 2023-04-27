@@ -19,7 +19,6 @@
 
     "evaluation_strategy": "epoch",
     "logging_strategy": "epoch",
-    "per_device_train_batch_size": 32,
     "batch_truncation": true,
     "add_cls": true,
     "add_clf": true,
@@ -34,7 +33,7 @@
             "train_file": "./data/train.conllu",
             "test_file": "./data/test.conllu",
             "eval_file": "./data/dev.conllu",
-            "label_idx": [3, 6],
+            "label_idx": [3],
             "tokens_idx": 1
         }
     ]
