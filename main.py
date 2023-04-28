@@ -8,19 +8,15 @@ import datasets
 import json
 import argparse
 
+import datasets
+from datasets import Sequence
+from datasets import ClassLabel
 def load_columns_dataset(train_path, dev_path, test_path, token_idx, label_idx):
     
-    def read_columns_file(file_path, token_idx, label_idx):
-
-        stop_point = 10000
-        counter    = 0
-        
+    def read_conll_file(file_path, token_idx, label_idx):        
         with open(file_path, "r") as f:
             sentences = [[]]
             for line in f:
-                if counter == stop_point:
-                    break
-                counter += 1
                 line = line.strip()
                 
                 if line:
@@ -37,37 +33,36 @@ def load_columns_dataset(train_path, dev_path, test_path, token_idx, label_idx):
         # Convert sentences to Hugging Face Dataset format
         dataset = {
             "tokens": [[token for token, label in sentence] for sentence in sentences],
-            "tags": [[label for token, label in sentence] for sentence in sentences],
+            "target": [[label for token, label in sentence] for sentence in sentences],
         }
 
         return dataset
 
-    def label_to_int(dataset, label_set):
-        label_to_id = {label: i for i, label in enumerate(label_set)}
-        dataset["tags"] = [[label_to_id[label] for label in labels] for labels in dataset["tags"]]
-        return dataset
-    
-    train_dset = read_columns_file(train_path, token_idx, label_idx)
-    dev_dset = read_columns_file(dev_path, token_idx, label_idx)
-    test_dset = read_columns_file(test_path, token_idx, label_idx)
+    train_dset = read_conll_file(train_path, token_idx, label_idx)
+    dev_dset = read_conll_file(dev_path, token_idx, label_idx)
+    test_dset = read_conll_file(test_path, token_idx, label_idx)
 
-    # Get all possible labels
+    # Get all possible labels and cast to ClassLabel
     label_set = set()
-    for dset in [train_dset, dev_dset]:
-        for labels in dset["tags"]:
+    for dset in [train_dset, dev_dset, test_dset]:
+        for labels in dset["target"]:
             label_set.update(labels)
+    label_names = sorted(list(label_set))
     
-    # labels to int
-    train_dset = label_to_int(train_dset, label_set)
-    dev_dset = label_to_int(dev_dset, label_set)
-    test_dset = label_to_int(test_dset, label_set)
+    train_dset = datasets.Dataset.from_dict(train_dset)
+    train_dset = train_dset.cast_column("target", Sequence(ClassLabel(names=label_names)))
 
+    dev_dset = datasets.Dataset.from_dict(dev_dset)
+    dev_dset = dev_dset.cast_column("target", Sequence(ClassLabel(names=label_names)))
+
+    test_dset = datasets.Dataset.from_dict(test_dset)
+    test_dset = test_dset.cast_column("target", Sequence(ClassLabel(names=label_names)))
     
     # Convert to Hugging Face DatasetDict format
     dataset = datasets.DatasetDict({
-            "train": datasets.Dataset.from_dict(train_dset),
-            "validation": datasets.Dataset.from_dict(dev_dset),
-            "test": datasets.Dataset.from_dict(test_dset)
+            "train": train_dset,
+            "validation": dev_dset,
+            "test": test_dset
         })
 
     return dataset
@@ -79,12 +74,12 @@ if __name__ == "__main__":
     args.add_argument("--config", type=str, help="training config file")
 
     args = args.parse_args()
-    print(args.config)
     # read train_config.json as easydict
     with open(args.config, "r") as f:
         args = easydict.EasyDict(json.load(f))
 
     tasks = []
+    print("[*] Loading tasks...")
     for task in args.tasks:
         if task.task_type == "token_classification":
             for l_idx in task.label_idx:

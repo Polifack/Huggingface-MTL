@@ -2,28 +2,25 @@
 
 - per_device_train_batch_size is half of train_batch_size
 - cant set train_batch_size in train_argments? why?
-
-@property
-def train_batch_size(self) -> int:
-    """
-    The actual batch size for training (may differ from `per_gpu_train_batch_size` in distributed training).
-    """
-    if self.per_gpu_train_batch_size:
-        logger.warning(
-            "Using deprecated `--per_gpu_train_batch_size` argument which will be removed in a future "
-            "version. Using `--per_device_train_batch_size` is preferred."
-        )
-    per_device_batch_size = self.per_gpu_train_batch_size or self.per_device_train_batch_size
-    train_batch_size = per_device_batch_size * max(1, self.n_gpu)
-    return train_batch_size
-
 - it was fixed by forcing the number of gpus to 1. should check this in order to allow for multi-gpu processing
+- could the mult-gpu functionality be restored? if so, how? (to do long term)
 
-- consideration for NER datasets for token classification tasks:
+  ##  use pytorch gatherers from multi-core like DistributedTensorGatherer?
+  ##  if so, where?
+
+
+
+==> consideration for NER datasets for token classification tasks:
   # NER: if the label is B-XXX we change it to I-XXX
   # print(label)
   # if label % 2 == 1:
   #     label += 1
 
-- quantization:
-  fp16 or bf16 or half_precision_backend?
+==> quantization:
+  to quantizate to 8 bits we can use:
+    
+    model = deep_copy_cache(model_type.from_pretrained)(args.model_name, ignore_mismatched_sizes=True, load_in_8bit=True, device_map='auto', **nl)
+
+  however it does not work
+
+==> evaluation raises warning about labels not being in BIO format

@@ -29,12 +29,12 @@
     "tasks":[
         {
             "task_type": "token_classification",
-            "task_name": "conllu",
-            "train_file": "./data/train.conllu",
-            "test_file": "./data/test.conllu",
-            "eval_file": "./data/dev.conllu",
-            "label_idx": [3],
-            "tokens_idx": 1
+            "task_name": "abs",
+            "train_file": "./data/train.labels",
+            "test_file": "./data/test.labels",
+            "eval_file": "./data/dev.labels",
+            "label_idx": [2],
+            "tokens_idx": 0
         }
     ]
 }

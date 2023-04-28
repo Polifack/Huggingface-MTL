@@ -1,8 +1,10 @@
 import numpy as np
 from datasets import Dataset
 from transformers import DataCollatorForTokenClassification
+from transformers import logging
 import evaluate
 import funcy as fc
+import warnings
 from frozendict import frozendict as fdict
 from dataclasses import dataclass
 from .task import Task
@@ -53,15 +55,16 @@ class TokenClassification(Task):
         return new_labels
 
     def __post_init__(self):
+        warnings.filterwarnings("ignore")
+        # logging.set_verbosity_error()
         super().__post_init__()
         
         target = self.dataset[self.main_split].features[self.y]
         if not self.num_labels:
             self.num_labels = 1 if "float" in target.dtype else target.feature.num_classes
         
-        print("Labels for task:")
-        print(target.feature.names)
         self.label_names = target.feature.names
+        print("[*] Number of labels found:",len(self.label_names))
 
     def set_tokenizer(self, tokenizer):
         self.tokenizer = tokenizer

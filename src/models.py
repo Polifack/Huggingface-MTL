@@ -215,12 +215,12 @@ class Model(transformers.PreTrainedModel):
             print("[*] Found task",i,"=>",task.name)
             model_type = eval(f"AutoModelFor{task.task_type}")
 
-            nl = {a: getattr(task, a) for a in ('num_labels', 'problem_type') if hasattr(task, a)}
+            nl    = {a: getattr(task, a) for a in ('num_labels', 'problem_type') if hasattr(task, a)}
+            
+            # this also does not work
+            # model = deep_copy_cache(model_type.from_pretrained)(args.model_name, ignore_mismatched_sizes=True, load_in_8bit=True, device_map='auto', **nl)
+            
             model = deep_copy_cache(model_type.from_pretrained)(args.model_name, ignore_mismatched_sizes=True, **nl)
-
-            #print("Task features (train):", task.dataset["train"].features)
-            #all_labels = task.dataset["train"][task.y]
-            #labels = np.unique(all_labels)
             
             labels = getattr(task.dataset["train"].features[task.y], "names", None)
             key    = tuple([normalize_label(x) for x in labels]) if labels else None
@@ -243,6 +243,8 @@ class Model(transformers.PreTrainedModel):
         self.task_models_list = nn.ModuleList(task_models_list)
 
         device = torch.cuda.current_device() if torch.cuda.is_available() else "cpu"
+        
+        
         self.Z = nn.parameter.Parameter(
             torch.zeros(len(tasks),
             self.shared_encoder.config.hidden_size, device=device),
@@ -341,14 +343,16 @@ class Trainer(transformers.Trainer):
         ## Load pre-trained transformer model        
         default, hparams_dict = to_dict(default), to_dict(hparams)
         self.p = hparams_dict.get('p', 0)
-        self.num_proc = hparams_dict.get('num_proc' ,None)
+        self.num_proc = hparams_dict.get('num_proc', None)
         self.batched = hparams_dict.get('batched', False)
 
         trainer_args = transformers.TrainingArguments(
             **{**default, **fc.project(hparams_dict, dir(transformers.TrainingArguments))},
         )
+
         ## Set the number of gpus (quick fix for now)
         trainer_args._n_gpu = 1
+        self.n_gpus = trainer_args._n_gpu
     
         if not tokenizer:
             tokenizer = AutoTokenizer.from_pretrained(hparams_dict["model_name"])
@@ -416,6 +420,7 @@ class Trainer(transformers.Trainer):
         
         
         outputs = []
+        print("=>", kwargs)
         for i, task in enumerate(self.tasks):
             print("[*] Evaluating task", i, "=>", task.name)
             
@@ -438,9 +443,9 @@ class Trainer(transformers.Trainer):
         """
         Create a single-task data loader that also yields task names
         """
-        print("asking for single train dataloader")
         if self.train_dataset is None:
             raise ValueError("Trainer: training requires a train_dataset.")
+        
         train_sampler = (
             RandomSampler(train_dataset)
             if self.args.local_rank == -1
@@ -448,12 +453,12 @@ class Trainer(transformers.Trainer):
         )
 
         data_loader = DataLoaderWithTaskname(
-            task_name=task_name,
-            data_loader=DataLoader(
+            task_name = task_name,
+            data_loader = DataLoader(
                 train_dataset,
-                batch_size=self.task_batch_size(task_name),
-                sampler=train_sampler,
-                collate_fn=self.data_collator.__call__,
+                batch_size = self.task_batch_size(task_name),
+                sampler = train_sampler,
+                collate_fn = self.data_collator.__call__,
             ),
         )
 
@@ -465,12 +470,11 @@ class Trainer(transformers.Trainer):
         but an iterable that returns a generator that samples from each
         task Dataloader
         """
-        print("asking for multitask train dataloader")
         return MultitaskDataloader(
             {
                 task_name: self.get_single_train_dataloader(task_name, task_dataset)
                 for task_name, task_dataset in self.train_dataset.items()
-            }, p=self.p,
+            }, p = self.p,
         )
 
     def get_eval_dataloader(self, eval_dataset=None):
