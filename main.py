@@ -1,7 +1,7 @@
-from src.tasks.sequence_classification import SequenceClassification
-from src.tasks.token_classification import TokenClassification
-from src.utils import *
-from src.models import *
+from hfmtl.tasks.sequence_classification import SequenceClassification
+from hfmtl.tasks.token_classification import TokenClassification
+from hfmtl.utils import *
+from hfmtl.models import *
 from frozendict import frozendict
 import easydict
 import datasets
