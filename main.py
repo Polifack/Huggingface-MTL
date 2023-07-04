@@ -11,6 +11,7 @@ import argparse
 import datasets
 from datasets import Sequence
 from datasets import ClassLabel
+
 def load_columns_dataset(train_path, dev_path, test_path, token_idx, label_idx):
     
     def read_conll_file(file_path, token_idx, label_idx):        
@@ -82,21 +83,24 @@ if __name__ == "__main__":
     print("[*] Loading tasks...")
     for task in args.tasks:
         if task.task_type == "token_classification":
-            for l_idx in task.label_idx:
+            for l_idx in task.label_idx:                
                 tasks.append(
                     TokenClassification(
                         dataset = load_columns_dataset(task.train_file, task.eval_file, task.test_file, task.tokens_idx, l_idx),
                         name = task.task_name,
+                        y = ["target_" + str(i) for i in range(len(task.task_targets))],
                         tokenizer_kwargs = frozendict(padding="max_length", max_length=args.max_seq_length, truncation=True)
                     )
                 )
         
         elif task.type == "sequence_classification":
-            for l_idx in task.label_idx:
+            
+            for l_idx in task.label_idx:                
                 tasks.append(
                     SequenceClassification(
                         dataset = load_columns_dataset(task.train_file, task.eval_file, task.test_file, task.tokens_idx, l_idx),
                         name = task.name,
+                        y = ["target_" + str(i) for i in range(len(task.task_targets)),
                         tokenizer_kwargs = frozendict(padding="max_length", max_length=args.max_seq_length, truncation=True)
                     )
                 )

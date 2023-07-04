@@ -29,7 +29,8 @@
     "tasks":[
         {
             "task_type": "token_classification",
-            "task_name": "abs",
+            "task_name": "constituent_absolute",
+            "task_targets": 2,
             "train_file": "./data/train.labels",
             "test_file": "./data/test.labels",
             "eval_file": "./data/dev.labels",

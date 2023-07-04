@@ -23,7 +23,7 @@ class SequenceClassification(Task):
     data_collator = DefaultDataCollator()
     s1: str = "sentence1"
     s2: str = "sentence2"
-    y:  str = "target"
+    y:  list|str = "target"
     num_labels: int = None
 
     def __post_init__(self):
