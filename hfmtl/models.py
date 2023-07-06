@@ -196,6 +196,7 @@ class MultiTaskTrainer(transformers.Trainer):
         super().__init__(**kwargs)
         self.p = 1
         self.processed_tasks = self.model.processed_tasks
+        self.n_tasks = len(self.processed_tasks)
         self.label_names = self.model.label_names
         self.train_dataset = {
             task: dataset["train"]
@@ -212,7 +213,6 @@ class MultiTaskTrainer(transformers.Trainer):
         self.data_collator = NLPDataCollator(tasks)
         
         print("[*] Init multitask trainer with tasks:", self.processed_tasks)
-        print("[*] Label names are:", self.label_names)
         print("[*] Heads are:", self.model.output_heads)
            
     def get_single_train_dataloader(self, task_name, train_dataset):
@@ -357,7 +357,7 @@ class MultiTaskTrainer(transformers.Trainer):
         
         
         for i, head in enumerate(self.model.output_heads.values()):
-            labels_name = f"target_{i+1}" if i > 0 else "target"
+            labels_name = f"target_{i}"
             labels_i = torch.tensor([i[labels_name] for i in inputs], device=self.args.device)
             logits, loss = head(sequence_output, pooled_output, labels=labels_i, attention_mask=attention_mask)
             loss_list.append(loss)

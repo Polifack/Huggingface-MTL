@@ -4,6 +4,7 @@ from torch import nn
 class TokenClassificationHead(nn.Module):
     def __init__(self, hidden_size, num_labels, dropout_p=0.1):
         super().__init__()
+        print("TokenClassificationHead init with hidden_size: {}, num_labels: {}, dropout_p: {}".format(hidden_size, num_labels, dropout_p))
         self.dropout = nn.Dropout(dropout_p)
         self.classifier = nn.Linear(hidden_size, num_labels)
         self.num_labels = num_labels
@@ -33,6 +34,7 @@ class TokenClassificationHead(nn.Module):
                     labels.view(-1),
                     torch.tensor(loss_fct.ignore_index).type_as(labels),
                 )
+                print(active_logits.shape, active_labels.shape)
                 loss = loss_fct(active_logits, active_labels)
             else:
                 loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
