@@ -9,12 +9,13 @@ import json
 import argparse
 
 import datasets
+from transformers import TrainingArguments
 from datasets import Sequence
 from datasets import ClassLabel
 
 def load_columns_dataset(train_path, dev_path, test_path, token_idx, label_idx):
     
-    def read_conll_file(file_path, token_idx, label_idx):        
+    def read_col_file(file_path, token_idx, label_idx):        
         with open(file_path, "r") as f:
             sentences = [[]]
             for line in f:
@@ -22,7 +23,9 @@ def load_columns_dataset(train_path, dev_path, test_path, token_idx, label_idx):
                 
                 if line:
                     split = line.split('\t')
-                    sentences[-1].append((split[token_idx], split[label_idx]))
+                    token = split[token_idx]
+                    labels = split[label_idx[0]] if len(label_idx)==1 else [split[i] for i in label_idx]
+                    sentences[-1].append((token, labels))
                 
                 else:
                     if sentences[-1]:
@@ -34,14 +37,18 @@ def load_columns_dataset(train_path, dev_path, test_path, token_idx, label_idx):
         # Convert sentences to Hugging Face Dataset format
         dataset = {
             "tokens": [[token for token, label in sentence] for sentence in sentences],
-            "target": [[label for token, label in sentence] for sentence in sentences],
         }
+        if len(label_idx) == 1:
+            dataset["target"] = [[label for token, label in sentence] for sentence in sentences]
+        else:
+            for i, idx in enumerate(label_idx):
+                dataset[f"target_{i}"] = [[label for token, label in sentence] for sentence in sentences]
 
         return dataset
 
-    train_dset = read_conll_file(train_path, token_idx, label_idx)
-    dev_dset = read_conll_file(dev_path, token_idx, label_idx)
-    test_dset = read_conll_file(test_path, token_idx, label_idx)
+    train_dset = read_col_file(train_path, token_idx, label_idx)
+    dev_dset = read_col_file(dev_path, token_idx, label_idx)
+    test_dset = read_col_file(test_path, token_idx, label_idx)
 
     # Get all possible labels and cast to ClassLabel
     label_set = set()
@@ -82,27 +89,25 @@ if __name__ == "__main__":
     tasks = []
     print("[*] Loading tasks...")
     for task in args.tasks:
-        if task.task_type == "token_classification":
-            for l_idx in task.label_idx:                
-                tasks.append(
-                    TokenClassification(
-                        dataset = load_columns_dataset(task.train_file, task.eval_file, task.test_file, task.tokens_idx, l_idx),
-                        name = task.task_name,
-                        y = ["target_" + str(i) for i in range(len(task.task_targets))],
-                        tokenizer_kwargs = frozendict(padding="max_length", max_length=args.max_seq_length, truncation=True)
-                    )
+        if task.task_type == "token_classification":              
+            tasks.append(
+                TokenClassification(
+                    dataset = load_columns_dataset(task.train_file, task.eval_file, task.test_file, task.tokens_idx, task.label_idx),
+                    name = task.task_name,
+                    y = ["target"] if len(task.label_idx)==1 else [f"target_{i}" for i in range(len(task.label_idx))],
+                    tokenizer_kwargs = frozendict(padding="max_length", max_length=args.max_seq_length, truncation=True)
                 )
+            )
         
-        elif task.type == "sequence_classification":           
-            for l_idx in task.label_idx:                
-                tasks.append(
-                    SequenceClassification(
-                        dataset = load_columns_dataset(task.train_file, task.eval_file, task.test_file, task.tokens_idx, l_idx),
-                        name = task.name,
-                        y = ["target_" + str(i) for i in range(len(task.task_targets)),
-                        tokenizer_kwargs = frozendict(padding="max_length", max_length=args.max_seq_length, truncation=True)
-                    )
+        elif task.type == "sequence_classification":               
+            tasks.append(
+                SequenceClassification(
+                    dataset = load_columns_dataset(task.train_file, task.eval_file, task.test_file, task.tokens_idx, task.label_idx),
+                    name = task.name,
+                    y = ["target"] if len(task.label_idx)==1 else [f"target_{i}" for i in range(len(task.label_idx))],
+                    tokenizer_kwargs = frozendict(padding="max_length", max_length=args.max_seq_length, truncation=True)
                 )
+            )
 
     print("[*] Initializing model...")
     model = MultiTaskModel(args.model_name, tasks)
