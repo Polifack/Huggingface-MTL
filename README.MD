@@ -1,8 +1,10 @@
 # Huggingface Multi-Task Learning Model
 
-Development of a MTL system for Huggingface Transformers library.
+Multi Task System with integration with Huggingface transformrers library.
+- This system will consider as 'task' each training set where the input data is different and each task can have several targets. For each task and target it will train it in a multi-task setting.
+- This system will deal with token classification and sequence classification tasks.
+- This system will focus on NLP tasks.
 
-This system will consider as 'task' each training set where the input data is different and each task can have several targets. For each task and target it will train it in a multi-task setting.
 
 Usage:
 ```
