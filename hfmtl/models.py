@@ -198,6 +198,7 @@ class MultiTaskTrainer(transformers.Trainer):
         self.processed_tasks = self.model.processed_tasks
         self.n_tasks = len(self.processed_tasks)
         self.label_names = self.model.label_names
+        self.task_names = list(self.processed_tasks.keys())
         self.train_dataset = {
             task: dataset["train"]
             for task, dataset in self.processed_tasks.items()
@@ -212,8 +213,8 @@ class MultiTaskTrainer(transformers.Trainer):
         self.device = self.pretrained_transformer.device
         self.data_collator = NLPDataCollator(tasks)
         
-        print("[*] Init multitask trainer with tasks:", self.processed_tasks)
-        print("[*] Heads are:", self.model.output_heads)
+        print("[*] Init multitask trainer with tasks:", self.task_names)
+        print("[*] Label names are:", self.label_names)
            
     def get_single_train_dataloader(self, task_name, train_dataset):
         if self.train_dataset is None:
@@ -260,12 +261,12 @@ class MultiTaskTrainer(transformers.Trainer):
 
         for step, inputs in enumerate(dataloader):            
             loss, preds, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
-            
-            for task, label_names in self.label_names.items():
+
+            for task in self.task_names:
                 preds_task = preds[task]
                 labels_task = labels[task]
                 
-                for label_name, labels_values in label_names.items():
+                for label_name, labels_values in self.label_names[task].items():
                     preds_tl  = preds_task[label_name]
                     labels_tl = labels_task[label_name]
                     
@@ -274,9 +275,7 @@ class MultiTaskTrainer(transformers.Trainer):
                                 label_ids   = labels_tl, 
                                 inputs      = inputs)
 
-                    # compute metrics foreach head using the corresponding task eval_function
-                    # i copied the function from the task-specific class to this one
-                    metrics = self.compute_metrics_token_classification(eval_pred, label_name)
+                    metrics = self.compute_metrics_token_classification(eval_pred, task, label_name)
                     metrics_eval = {}
                     for metric in metrics.items():
                         metrics_eval[metric_key_prefix + "_" + metric[0]] = metric[1]
@@ -305,29 +304,28 @@ class MultiTaskTrainer(transformers.Trainer):
         
         return (loss, logits_dict, labels_dict)
 
-    def compute_metrics_token_classification(self, eval_pred, label_names):
+    def compute_metrics_token_classification(self, eval_pred, task, label_names):
         predictions, labels = eval_pred.predictions, eval_pred.label_ids
         
         # for task in tasks
-        for task_name in self.label_names:
-            task_name = self.label_names['naive_absolute_n_commons']
-            true_labels = [
-                [task_name[label_names][int(l)] for l in label if l != -100] for label in labels
-            ]
-            
-            true_predictions = [
-                [task_name[label_names][p] for (p, l) in zip(prediction, label) if l != -100]
-                for prediction, label in zip(predictions, labels)
-            ]
-            metric = evaluate.load("seqeval")
-            all_metrics = metric.compute(
-                predictions = true_predictions, 
-                references = true_labels
-            )
-            
-            meta = {"name": task_name, "size": len(predictions), "index": 0}
-            print(all_metrics)
-            metrics = {k.replace("overall_",""):v for k,v in all_metrics.items() if "overall" in k}
+        label_values = self.label_names[task][label_names]
+        true_labels = [
+            [label_values[int(l)] for l in label if l != -100] for label in labels
+        ]
+        
+        true_predictions = [
+            [label_values[p] for (p, l) in zip(prediction, label) if l != -100]
+            for prediction, label in zip(predictions, labels)
+        ]
+        metric = evaluate.load("seqeval")
+        all_metrics = metric.compute(
+            predictions = true_predictions, 
+            references = true_labels
+        )
+        
+        meta = {"name": f"{task}_{label_names}", "size": len(predictions), "index": 0}
+        print(all_metrics)
+        metrics = {k.replace("overall_",""):v for k,v in all_metrics.items() if "overall" in k}
         
         print(metrics)
         return {**metrics, **meta}      
