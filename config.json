@@ -29,13 +29,13 @@
     "tasks":[
         {
             "task_type": "token_classification",
-            "task_name": "constituent_absolute",
-            "task_targets": 2,
-            "train_file": "./data/train.labels",
-            "test_file": "./data/test.labels",
-            "eval_file": "./data/dev.labels",
-            "label_idx": [2],
-            "tokens_idx": 0
+            "task_name": "sample",
+            "task_targets": 1,
+            "train_file": "./data/train.conllu",
+            "test_file": "./data/test.conllu",
+            "eval_file": "./data/dev.conllu",
+            "label_idx": [3],
+            "tokens_idx": 1
         }
     ]
 }
