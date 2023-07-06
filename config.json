@@ -21,12 +21,11 @@
         {
             "task_type": "token_classification",
             "task_name": "sample",
-            "task_targets": 1,
             "train_file": "./data/train.conllu",
             "test_file": "./data/test.conllu",
             "eval_file": "./data/dev.conllu",
-            "label_idx": [3],
-            "tokens_idx": 1
+            "label_idx": [1,2],
+            "tokens_idx": 0
         }
     ]
 }

@@ -93,8 +93,7 @@ if __name__ == "__main__":
                     )
                 )
         
-        elif task.type == "sequence_classification":
-            
+        elif task.type == "sequence_classification":           
             for l_idx in task.label_idx:                
                 tasks.append(
                     SequenceClassification(
@@ -105,6 +104,24 @@ if __name__ == "__main__":
                     )
                 )
 
-    models = Model(tasks, args) # list of models; by default, shared encoder, task-specific CLS token task-specific head 
-    trainer = Trainer(models, tasks, args) # tasks are uniformly sampled by default
+    print("[*] Initializing model...")
+    model = MultiTaskModel(args.model_name, tasks)
+
+    training_args = TrainingArguments(
+        output_dir = args.output_dir,
+        num_train_epochs = args.num_train_epochs,
+        learning_rate = args.learning_rate,
+        evaluation_strategy = args.logging_strategy,
+        save_strategy = args.logging_strategy,
+        weight_decay = args.weight_decay,
+    )
+    trainer = MultiTaskTrainer(
+        model = model,
+        tasks = tasks,
+        args = training_args,
+        train_dataset = model.train_dataset,
+        eval_dataset = model.eval_dataset,
+        compute_metrics = None,
+        tokenizer = model.tokenizer
+    )
     trainer.train()

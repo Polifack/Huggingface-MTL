@@ -213,6 +213,7 @@ class MultiTaskTrainer(transformers.Trainer):
         
         print("[*] Init multitask trainer with tasks:", self.processed_tasks)
         print("[*] Label names are:", self.label_names)
+        print("[*] Heads are:", self.model.output_heads)
            
     def get_single_train_dataloader(self, task_name, train_dataset):
         if self.train_dataset is None:
@@ -354,19 +355,13 @@ class MultiTaskTrainer(transformers.Trainer):
         loss_list = []
         logits_list = {}
         
-        if len(self.model.output_heads) == 1:
-            labels_name = f"target"
+        
+        for i, head in enumerate(self.model.output_heads.values()):
+            labels_name = f"target_{i+1}" if i > 0 else "target"
             labels_i = torch.tensor([i[labels_name] for i in inputs], device=self.args.device)
             logits, loss = head(sequence_output, pooled_output, labels=labels_i, attention_mask=attention_mask)
             loss_list.append(loss)
             logits_list[labels_name] = logits
-        else:
-            for i, head in enumerate(self.model.output_heads.values()):
-                labels_name = f"target_{i+1}"
-                labels_i = torch.tensor([i[labels_name] for i in inputs], device=self.args.device)
-                logits, loss = head(sequence_output, pooled_output, labels=labels_i, attention_mask=attention_mask)
-                loss_list.append(loss)
-                logits_list[labels_name] = logits
-        
         loss = torch.stack(loss_list)
+        loss = torch.mean(loss)
         return (loss, logits_list) if return_outputs else loss
