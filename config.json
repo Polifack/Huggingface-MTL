@@ -5,13 +5,8 @@
 
     "learning_rate": 1e-5,
     "weight_decay": 0.01,
-    "adam_epsilon": 1e-8,
-    "adam_beta1": 0.9,
-    "adam_beta2": 0.999,
     "num_train_epochs": 3,
     "max_seq_length": 16,
-    "fp16": false,
-    
     
     "do_eval": true,
     "do_train": true,
@@ -19,11 +14,7 @@
 
     "evaluation_strategy": "epoch",
     "logging_strategy": "epoch",
-    "batch_truncation": true,
-    "add_cls": true,
-    "add_clf": true,
     "drop_probability": 0.1,
-    "save_steps":1000000,
     "include_inputs_for_metrics": true,
 
     "tasks":[

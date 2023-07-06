@@ -8,6 +8,8 @@ from torch.utils.data.sampler import RandomSampler, WeightedRandomSampler, Seque
 from torch.utils.data.distributed import DistributedSampler
 from transformers.data.data_collator import InputDataClass
 from types import MappingProxyType
+from frozendict import frozendict
+from .heads.token_classification_head import TokenClassificationHead
 from torch.utils.data import DataLoader, Dataset
 from transformers import AutoModel, AutoTokenizer
 import transformers
@@ -352,12 +354,19 @@ class MultiTaskTrainer(transformers.Trainer):
         loss_list = []
         logits_list = {}
         
-        for i, head in enumerate(self.model.output_heads.values()):
-            labels_name = f"target_{i+1}"
+        if len(self.model.output_heads) == 1:
+            labels_name = f"target"
             labels_i = torch.tensor([i[labels_name] for i in inputs], device=self.args.device)
             logits, loss = head(sequence_output, pooled_output, labels=labels_i, attention_mask=attention_mask)
             loss_list.append(loss)
             logits_list[labels_name] = logits
+        else:
+            for i, head in enumerate(self.model.output_heads.values()):
+                labels_name = f"target_{i+1}"
+                labels_i = torch.tensor([i[labels_name] for i in inputs], device=self.args.device)
+                logits, loss = head(sequence_output, pooled_output, labels=labels_i, attention_mask=attention_mask)
+                loss_list.append(loss)
+                logits_list[labels_name] = logits
         
         loss = torch.stack(loss_list)
         return (loss, logits_list) if return_outputs else loss

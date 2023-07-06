@@ -42,12 +42,9 @@ class TokenClassification:
     def __post_init__(self):
         self.label_names = {}
         self.num_labels  = {}
-
-        print("[*] Loading TokenClassificationTask")
-        print(f"    - Task name: {self.name}")
-        print(f"    - Task type: {self.task_type}")
-        print(self.dataset[self.main_split].features)
-        print(self.y)
+        
+        if type(self.y) == str:
+            self.y = [self.y]
 
         for y in self.y:
             target = self.dataset[self.main_split].features[y]
