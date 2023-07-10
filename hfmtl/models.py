@@ -254,11 +254,14 @@ class MultiTaskTrainer(transformers.Trainer):
         # this is useless?
         model = self._wrap_model(self.model, training=False, dataloader=dataloader)
 
+        print("*********************************")
+        print("***     Evaluation Loop       ***")
+        print("*********************************")
         for step, inputs in enumerate(dataloader):            
             loss, preds, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
-
+            print("[*] Evaluting for inputs:", inputs)
             for task in self.task_names:
-                print("[*] Evaluating task:", task)
+                print("    Evaluating task:", task)
                 preds_task = preds[task]
                 labels_task = labels[task]
                 
@@ -315,7 +318,10 @@ class MultiTaskTrainer(transformers.Trainer):
             [label_values[p] for (p, l) in zip(prediction, label) if l != -100]
             for prediction, label in zip(predictions, labels)
         ]
-        metric = evaluate.load("seqeval")
+        
+        #metric = evaluate.load("seqeval")
+        metric = evaluate.load('./evaluation')
+
         all_metrics = metric.compute(
             predictions = true_predictions, 
             references = true_labels
