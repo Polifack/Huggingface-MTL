@@ -210,29 +210,33 @@ class MultiTaskTrainer(transformers.Trainer):
         
         print("[*] Init multitask trainer with tasks:", self.task_names)
         print("[*] Label names are:", self.label_names)
-           
-    def get_single_train_dataloader(self, task_name, train_dataset):
-        if self.train_dataset is None:
-            raise ValueError("Trainer: training requires a train_dataset.")
         
-        train_sampler = (SequentialSampler(train_dataset) if self.args.local_rank == -1 else DistributedSampler(train_dataset))
-        data_loader = DataLoaderWithTaskname(
-            task_name = task_name,
-            data_loader = DataLoader(
-                train_dataset,
-                batch_size = self.args.train_batch_size,
-                shuffle = False,
-                sampler = train_sampler,
-                collate_fn = self.data_collator.__call__,
-            ),
-        )
 
-        return data_loader
+
+    
+
 
     def get_train_dataloader(self):
+        def get_single_train_dataloader(self, task_name, train_dataset):
+            if self.train_dataset is None:
+                raise ValueError("Trainer: training requires a train_dataset.")
+            train_sampler = (SequentialSampler(train_dataset) if self.args.local_rank == -1 else DistributedSampler(train_dataset))
+            data_loader = DataLoaderWithTaskname(
+                task_name = task_name,
+                data_loader = DataLoader(
+                    train_dataset,
+                    batch_size = self.args.train_batch_size,
+                    shuffle = False,
+                    sampler = train_sampler,
+                    collate_fn = self.data_collator.__call__,
+                ),
+            )
+
+            return data_loader
+        
         return MultitaskDataloader(
             {
-                task_name: self.get_single_train_dataloader(task_name, task_dataset)
+                task_name: get_single_train_dataloader(task_name, task_dataset)
                 for task_name, task_dataset in self.train_dataset.items()
             }, p = self.p,
         )
@@ -327,7 +331,7 @@ class MultiTaskTrainer(transformers.Trainer):
             references = true_labels
         )
         
-        meta = {"name": f"{task}_{label_names}", "size": len(predictions), "index": 0}
+        meta    = {"task_name": f"{task}_{label_names}", "size": len(predictions), "index": 0}
         metrics = {k.replace("overall_",""):v for k,v in all_metrics.items() if "overall" in k}
         return {**metrics, **meta}      
 

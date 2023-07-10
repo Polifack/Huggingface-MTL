@@ -17,8 +17,7 @@ from transformers import TrainingArguments
 from datasets import Sequence
 from datasets import ClassLabel
 
-def load_columns_dataset(train_path, dev_path, test_path, token_idx, label_idx):
-    
+def load_dset(train_path, dev_path, test_path, token_idx, label_idx):
     def read_col_file(file_path, token_idx, label_idx):        
         with open(file_path, "r") as f:
             sentences = [[]]
@@ -96,7 +95,7 @@ if __name__ == "__main__":
         if task.task_type == "token_classification":              
             tasks.append(
                 TokenClassification(
-                    dataset = load_columns_dataset(task.train_file, task.eval_file, task.test_file, task.tokens_idx, task.label_idx),
+                    dataset = load_dset(task.train_file, task.eval_file, task.test_file, task.tokens_idx, task.label_idx),
                     name = task.task_name,
                     y = [f"target_{i}" for i in range(len(task.label_idx))],
                     tokenizer_kwargs = frozendict(padding="max_length", max_length=args.max_seq_length, truncation=True)
@@ -106,7 +105,7 @@ if __name__ == "__main__":
         elif task.type == "sequence_classification":               
             tasks.append(
                 SequenceClassification(
-                    dataset = load_columns_dataset(task.train_file, task.eval_file, task.test_file, task.tokens_idx, task.label_idx),
+                    dataset = load_dset(task.train_file, task.eval_file, task.test_file, task.tokens_idx, task.label_idx),
                     name = task.name,
                     y = [f"target_{i}" for i in range(len(task.label_idx))],
                     tokenizer_kwargs = frozendict(padding="max_length", max_length=args.max_seq_length, truncation=True)
@@ -122,8 +121,12 @@ if __name__ == "__main__":
         output_dir = args.output_dir,
         num_train_epochs = args.num_train_epochs,
         learning_rate = args.learning_rate,
+        per_device_eval_batch_size = args.per_device_eval_batch_size,
+        per_device_train_batch_size = args.per_device_train_batch_size,
         evaluation_strategy = args.logging_strategy,
         save_strategy = args.logging_strategy,
+        log_level = args.log_level,
+        logging_strategy = args.logging_strategy,
         weight_decay = args.weight_decay,
     )
     trainer = MultiTaskTrainer(

@@ -4,16 +4,22 @@
     "overwrite_output_dir": true,
 
     "learning_rate": 1e-5,
-    "weight_decay": 0.01,
+    "weight_decay": 0.0001,
     "num_train_epochs": 25,
     "max_seq_length": 128,
+
+    "log_level": "critical",
+    "logging_strategy": "epoch",
+
+    "per_device_eval_batch_size": 16,
+    "per_device_train_batch_size": 16,
+    "auto_find_batch_size": false, //requires accelerate
     
     "do_eval": true,
     "do_train": true,
     "do_predict": true,
 
     "evaluation_strategy": "epoch",
-    "logging_strategy": "epoch",
     "drop_probability": 0.1,
     "include_inputs_for_metrics": true,
 
