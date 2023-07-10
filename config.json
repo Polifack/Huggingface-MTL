@@ -5,8 +5,8 @@
 
     "learning_rate": 1e-5,
     "weight_decay": 0.01,
-    "num_train_epochs": 3,
-    "max_seq_length": 16,
+    "num_train_epochs": 25,
+    "max_seq_length": 128,
     
     "do_eval": true,
     "do_train": true,
@@ -22,9 +22,9 @@
             "task_type": "token_classification",
             "task_name": "sample",
             "train_file": "./data/train.labels",
-            "test_file": "./data/test.labels",
+            "test_file": "./data/dev.labels",
             "eval_file": "./data/dev.labels",
-            "label_idx": [1,2],
+            "label_idx": [2,3],
             "tokens_idx": 0
         }
     ]

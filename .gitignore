@@ -1,4 +1,8 @@
 tmp
 models
-src/__pycache__
+hfmtl/__pycache__
+hfmtl/heads/__pycache__
+hfmtl/tasks/__pycache__
+ouptut
 notes.txt
+*.pt

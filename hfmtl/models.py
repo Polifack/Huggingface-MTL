@@ -139,56 +139,51 @@ class MultiTaskModel(nn.Module):
         else:
             raise NotImplementedError()
 
-    def forward(self, input_ids = None, attention_mask = None, token_type_ids = None, position_ids = None,
-            head_mask = None, inputs_embeds = None, labels = None, task_ids = None, **kwargs):
-            print("FORWARD MODEL FORWARD MODEL FORWARD MODEL")
-            # compute the transformer output
-            # this is never called?
-            outputs = self.encoder(
-                input_ids=input_ids,
-                attention_mask=attention_mask,
-                token_type_ids=token_type_ids,
-                position_ids=position_ids,
-                head_mask=head_mask,
-                inputs_embeds=inputs_embeds,
-            )
-            sequence_output, pooled_output = outputs[:2]
+    # def forward(self, input_ids = None, attention_mask = None, token_type_ids = None, position_ids = None,
+    #         head_mask = None, inputs_embeds = None, labels = None, task_ids = None, **kwargs):
+    #         # compute the transformer output
+    #         # this is never called?
+    #         outputs = self.encoder(
+    #             input_ids=input_ids,
+    #             attention_mask=attention_mask,
+    #             token_type_ids=token_type_ids,
+    #             position_ids=position_ids,
+    #             head_mask=head_mask,
+    #             inputs_embeds=inputs_embeds,
+    #         )
+    #         sequence_output, pooled_output = outputs[:2]
+    #         unique_task_ids_list = torch.unique(task_ids).tolist()
 
-            print("3) Transformer has been forwarded")
-            unique_task_ids_list = torch.unique(task_ids).tolist()
+    #         loss_list = []
+    #         logits = None
+    #         # print("Computing loss...")
+    #         # print("task_ids", task_ids)
+    #         print("==> Computing loss for the following tasks:")
+    #         for unique_task_id in unique_task_ids_list:
+    #             print("Task_id =",unique_task_id)
+    #             ptc_train = self.processed_tasks['train']
+    #             target_cols = [col for col in ptc_train.features if col.startswith("target_")]
 
-            loss_list = []
-            logits = None
-            # print("Computing loss...")
-            # print("task_ids", task_ids)
-            print("==> Computing loss for the following tasks:")
-            print("==>", unique_task_ids_list)
-            for unique_task_id in unique_task_ids_list:
-                print("Task_id =",unique_task_id)
-                ptc_train = self.processed_tasks['train']
-                target_cols = [col for col in ptc_train.features if col.startswith("target_")]
-                print("target_cols =", target_cols)
+    #             # for tc in target_cols:
+    #             #     print("Target Column =",tc)
+    #             #     print("Labels =",labels)
+    #             #     logits, task_loss = self.output_heads[str(unique_task_id)].forward(
+    #             #         sequence_output[task_id_filter],
+    #             #         pooled_output[task_id_filter],
+    #             #         labels = None if labels is None else labels[task_id_filter],
+    #             #         attention_mask=attention_mask[task_id_filter],
+    #             #     )
 
-                # for tc in target_cols:
-                #     print("Target Column =",tc)
-                #     print("Labels =",labels)
-                #     logits, task_loss = self.output_heads[str(unique_task_id)].forward(
-                #         sequence_output[task_id_filter],
-                #         pooled_output[task_id_filter],
-                #         labels = None if labels is None else labels[task_id_filter],
-                #         attention_mask=attention_mask[task_id_filter],
-                #     )
+    #             #     if labels is not None:
+    #             #         loss_list.append(task_loss)
 
-                #     if labels is not None:
-                #         loss_list.append(task_loss)
+    #         # Loss averaged over all tasks
+    #         outputs = (logits, outputs[2:])
+    #         if loss_list:
+    #             loss = torch.stack(loss_list)
+    #             outputs = (loss.mean(),) + outputs
 
-            # Loss averaged over all tasks
-            outputs = (logits, outputs[2:])
-            if loss_list:
-                loss = torch.stack(loss_list)
-                outputs = (loss.mean(),) + outputs
-
-            return outputs
+    #         return outputs
 
 
 class MultiTaskTrainer(transformers.Trainer):
@@ -263,10 +258,12 @@ class MultiTaskTrainer(transformers.Trainer):
             loss, preds, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
 
             for task in self.task_names:
+                print("[*] Evaluating task:", task)
                 preds_task = preds[task]
                 labels_task = labels[task]
                 
                 for label_name, labels_values in self.label_names[task].items():
+                    print("       Evaluating target:", label_name)
                     preds_tl  = preds_task[label_name]
                     labels_tl = labels_task[label_name]
                     
@@ -276,6 +273,7 @@ class MultiTaskTrainer(transformers.Trainer):
                                 inputs      = inputs)
 
                     metrics = self.compute_metrics_token_classification(eval_pred, task, label_name)
+                    print("       Evaluation results:",metrics)
                     metrics_eval = {}
                     for metric in metrics.items():
                         metrics_eval[metric_key_prefix + "_" + metric[0]] = metric[1]
@@ -324,10 +322,7 @@ class MultiTaskTrainer(transformers.Trainer):
         )
         
         meta = {"name": f"{task}_{label_names}", "size": len(predictions), "index": 0}
-        print(all_metrics)
         metrics = {k.replace("overall_",""):v for k,v in all_metrics.items() if "overall" in k}
-        
-        print(metrics)
         return {**metrics, **meta}      
 
     def compute_loss(self, model, inputs, return_outputs=False):

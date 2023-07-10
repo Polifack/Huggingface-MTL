@@ -8,6 +8,10 @@ import datasets
 import json
 import argparse
 
+# disable warnings (e.g. for deprecated functions or for using non-ner datasets with ner evaluator)
+# import warnings
+# warnings.filterwarnings("ignore")
+
 import datasets
 from transformers import TrainingArguments
 from datasets import Sequence
@@ -18,10 +22,7 @@ def load_columns_dataset(train_path, dev_path, test_path, token_idx, label_idx):
     def read_col_file(file_path, token_idx, label_idx):        
         with open(file_path, "r") as f:
             sentences = [[]]
-            for i,line in enumerate(f):
-                if i>100:
-                    break
-                
+            for i,line in enumerate(f):                
                 line = line.strip()
                 
                 if line:
