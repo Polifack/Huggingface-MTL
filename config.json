@@ -1,6 +1,7 @@
 {
     "model_name": "roberta-base",
     "output_dir": "./ouptut/",
+    "resume_from_checkpoint": "./output/checkpoint-62250",
     "overwrite_output_dir": true,
 
     "learning_rate": 1e-5,
@@ -11,12 +12,12 @@
     "log_level": "critical",
     "logging_strategy": "epoch",
 
-    "per_device_eval_batch_size": 16,
+    "per_device_eval_batch_size": 64,
     "per_device_train_batch_size": 16,
-    "auto_find_batch_size": false, //requires accelerate
+    "auto_find_batch_size": true, 
     
-    "do_eval": true,
-    "do_train": true,
+    "do_eval": false,
+    "do_train": false,
     "do_predict": true,
 
     "evaluation_strategy": "epoch",
