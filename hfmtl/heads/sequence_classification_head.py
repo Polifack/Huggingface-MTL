@@ -34,7 +34,6 @@ class SequenceClassificationHead(nn.Module):
                     labels.view(-1),
                     torch.tensor(loss_fct.ignore_index).type_as(labels),
                 )
-                print(active_logits.shape, active_labels.shape)
                 loss = loss_fct(active_logits, active_labels)
             else:
                 loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))

@@ -12,6 +12,7 @@ from transformers.data.data_collator import InputDataClass
 from types import MappingProxyType
 from frozendict import frozendict
 from .heads.token_classification_head import TokenClassificationHead
+from .heads.sequence_classification_head import SequenceClassificationHead
 from torch.utils.data import DataLoader, Dataset
 from transformers import AutoModel, AutoTokenizer
 import transformers
@@ -102,6 +103,7 @@ class MultiTaskModel(nn.Module):
                     task.num_labels[subtask]
                 )
                 
+                print("=====> subtask = ", subtask)
                 self.output_heads[subtask] = decoder
 
         self.processed_tasks = self.preprocess_tasks(tasks, self.tokenizer)
@@ -111,9 +113,9 @@ class MultiTaskModel(nn.Module):
         self.eval_dataset    = {task.name: self.processed_tasks[task.name]['validation'] for task in tasks} if do_eval else None
         self.test_dataset    = {task.name: self.processed_tasks[task.name]['test'] for task in tasks} if do_test else None
 
-        print("Created model with train dset=", self.train_dataset, type(self.train_dataset))
-        print("Created model with eval dset=", self.eval_dataset, type(self.eval_dataset))
-        print("Created model with test dset=", self.test_dataset, type(self.test_dataset))
+        print("Created model with train dset =", self.train_dataset, type(self.train_dataset))
+        print("Created model with eval dset =", self.eval_dataset, type(self.eval_dataset))
+        print("Created model with test dset =", self.test_dataset, type(self.test_dataset))
     
     def preprocess_tasks(self, tasks, tokenizer):      
         features_dict = {}
@@ -148,55 +150,12 @@ class MultiTaskModel(nn.Module):
         if task_type == "TokenClassification":
             print("[*] Creating TokenClassification head with", n_labels, "labels")
             return TokenClassificationHead(encoder_hidden_size, n_labels)
+        elif task_type == "SequenceClassification":
+            print("[*] Creating SequenceClassification head with", n_labels, "labels")
+            return SequenceClassificationHead(encoder_hidden_size, n_labels)
+
         else:
             raise NotImplementedError()
-
-    # def forward(self, input_ids = None, attention_mask = None, token_type_ids = None, position_ids = None,
-    #         head_mask = None, inputs_embeds = None, labels = None, task_ids = None, **kwargs):
-    #         # compute the transformer output
-    #         # this is never called?
-    #         outputs = self.encoder(
-    #             input_ids=input_ids,
-    #             attention_mask=attention_mask,
-    #             token_type_ids=token_type_ids,
-    #             position_ids=position_ids,
-    #             head_mask=head_mask,
-    #             inputs_embeds=inputs_embeds,
-    #         )
-    #         sequence_output, pooled_output = outputs[:2]
-    #         unique_task_ids_list = torch.unique(task_ids).tolist()
-
-    #         loss_list = []
-    #         logits = None
-    #         # print("Computing loss...")
-    #         # print("task_ids", task_ids)
-    #         print("==> Computing loss for the following tasks:")
-    #         for unique_task_id in unique_task_ids_list:
-    #             print("Task_id =",unique_task_id)
-    #             ptc_train = self.processed_tasks['train']
-    #             target_cols = [col for col in ptc_train.features if col.startswith("target_")]
-
-    #             # for tc in target_cols:
-    #             #     print("Target Column =",tc)
-    #             #     print("Labels =",labels)
-    #             #     logits, task_loss = self.output_heads[str(unique_task_id)].forward(
-    #             #         sequence_output[task_id_filter],
-    #             #         pooled_output[task_id_filter],
-    #             #         labels = None if labels is None else labels[task_id_filter],
-    #             #         attention_mask=attention_mask[task_id_filter],
-    #             #     )
-
-    #             #     if labels is not None:
-    #             #         loss_list.append(task_loss)
-
-    #         # Loss averaged over all tasks
-    #         outputs = (logits, outputs[2:])
-    #         if loss_list:
-    #             loss = torch.stack(loss_list)
-    #             outputs = (loss.mean(),) + outputs
-
-    #         return outputs
-
 
 class MultiTaskTrainer(transformers.Trainer):
     def __init__(self, tasks, **kwargs):
@@ -227,13 +186,15 @@ class MultiTaskTrainer(transformers.Trainer):
     def get_single_train_dataloader(self, task_name, train_dataset):
         if self.train_dataset is None and self.args.do_train:
             raise ValueError("[*] Error Trainer: training requires a train_dataset.")
-        train_sampler = (SequentialSampler(train_dataset) if self.args.local_rank == -1 else DistributedSampler(train_dataset))
+
+        train_sampler = SequentialSampler(train_dataset)# if self.args.local_rank == -1 else DistributedSampler(train_dataset))
         data_loader = DataLoaderWithTaskname(
             task_name = task_name,
             data_loader = DataLoader(
                 train_dataset,
                 batch_size = self.bsize,
-                shuffle = not self.args.do_predict, # only shuffle during training
+                # shuffle = not self.args.do_predict, # only shuffle during training
+                shuffle = False,
                 sampler = train_sampler,
                 collate_fn = self.data_collator.__call__,
             ),
@@ -433,8 +394,11 @@ class MultiTaskTrainer(transformers.Trainer):
         loss_list = []
         logits_list = {}
         
-        for i, head in enumerate(self.model.output_heads.values()):
-            labels_name = f"target_{i}"
+        i = 0
+        for key, head in (self.model.output_heads.items()):
+            if key not in keys:
+                continue
+            labels_name = key
             labels_i = torch.tensor([i[labels_name] for i in inputs], device=self.args.device)
             logits, loss = head(sequence_output, pooled_output, labels=labels_i, attention_mask=attention_mask)
             loss_list.append(loss)

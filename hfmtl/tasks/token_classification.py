@@ -40,6 +40,7 @@ class TokenClassification:
         return new_labels
 
     def __post_init__(self):
+        print("[*] Initializing TokenClassificationTask... with y:", self.y)
         self.label_names = {}
         self.num_labels  = {}
         

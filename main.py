@@ -17,17 +17,16 @@ from transformers import TrainingArguments
 from datasets import Sequence
 from datasets import ClassLabel
 
-def load_dset(train_path, dev_path, test_path, token_idx, label_idx):
+def load_dset(train_path, dev_path, test_path, token_idx, label_idx, task_name):
     def read_col_file(file_path, token_idx, label_idx):
         with open(file_path, "r") as f:
             sentences = [[]]
-            for i, line in enumerate(f):
-                if i>2096:
-                    break
+            for i, line in enumerate(f):                
                 line = line.strip()
-                
                 if line:
                     split = line.split('\t')
+                    if len(split)<3:
+                        continue
                     token = split[token_idx]
                     labels = split[label_idx[0]] if len(label_idx)==1 else [split[i] for i in label_idx]
                     if type(labels) == str:
@@ -47,17 +46,17 @@ def load_dset(train_path, dev_path, test_path, token_idx, label_idx):
         }
         
         for i, idx in enumerate(label_idx):
-            dataset[f"target_{i}"] = [[row[i+1] for row in sentence] for sentence in sentences]
+            dataset[f"target_{task_name}_{i}"] = [[row[i+1] for row in sentence] for sentence in sentences]
 
         return dataset
 
-    # train_dset = read_col_file(train_path, token_idx, label_idx)
-    # train_dset = datasets.Dataset.from_dict(train_dset)
-    train_dset = None
+    train_dset = read_col_file(train_path, token_idx, label_idx)
+    train_dset = datasets.Dataset.from_dict(train_dset)
+    # train_dset = None
     
-    # dev_dset = read_col_file(dev_path, token_idx, label_idx)
-    # dev_dset = datasets.Dataset.from_dict(dev_dset)
-    dev_dset = None
+    dev_dset = read_col_file(dev_path, token_idx, label_idx)
+    dev_dset = datasets.Dataset.from_dict(dev_dset)
+    # dev_dset = None
     
     test_dset = read_col_file(test_path, token_idx, label_idx)
     test_dset = datasets.Dataset.from_dict(test_dset)
@@ -66,21 +65,21 @@ def load_dset(train_path, dev_path, test_path, token_idx, label_idx):
     for i in range(len(label_idx)):
         label_set = set()
         
-        #for dset in [train_dset, dev_dset, test_dset]:
-        for dset in [test_dset]:
-            for labels in dset[f"target_{i}"]:
+        for dset in [train_dset, dev_dset, test_dset]:
+            for labels in dset[f"target_{task_name}_{i}"]:
                 label_set.update(labels)
         
         label_names = sorted(list(label_set))        
         
-        #train_dset = train_dset.cast_column(f"target_{i}", Sequence(ClassLabel(names=label_names)))
-        #dev_dset = dev_dset.cast_column(f"target_{i}", Sequence(ClassLabel(names=label_names)))
-        test_dset = test_dset.cast_column(f"target_{i}", Sequence(ClassLabel(names=label_names)))
+        print(label_names, type(label_names))
+        train_dset = train_dset.cast_column(f"target_{task_name}_{i}", Sequence(ClassLabel(names=label_names)))
+        dev_dset = dev_dset.cast_column(f"target_{task_name}_{i}", Sequence(ClassLabel(names=label_names)))
+        test_dset = test_dset.cast_column(f"target_{task_name}_{i}", Sequence(ClassLabel(names=label_names)))
     
     # Convert to Hugging Face DatasetDict format
     dataset = datasets.DatasetDict({
-            # "train": train_dset,
-            # "validation": dev_dset,
+            "train": train_dset,
+            "validation": dev_dset,
             "test": test_dset
         })
 
@@ -99,6 +98,7 @@ def train_model(model, tasks, args):
         log_level = args.log_level,
         logging_strategy = args.logging_strategy,
         weight_decay = args.weight_decay,
+        do_train = True,
     )
     trainer = MultiTaskTrainer(
         model = model,
@@ -154,27 +154,36 @@ if __name__ == "__main__":
 
     tasks = []
     print("[*] Loading tasks...")
+
     for task in args.tasks:
         if task.task_type == "token_classification":              
             tasks.append(
                 TokenClassification(
-                    dataset = load_dset(task.train_file, task.eval_file, task.test_file, task.tokens_idx, task.label_idx),
+                    dataset = load_dset(task.train_file, task.eval_file, task.test_file, task.tokens_idx, task.label_idx, task.task_name),
                     name = task.task_name,
                     main_split = "train" if args.do_train else "test",
-                    y = [f"target_{i}" for i in range(len(task.label_idx))],
+                    y = [f"target_{task.task_name}_{i}" for i in range(len(task.label_idx))],
                     tokenizer_kwargs = frozendict(padding="max_length", max_length=args.max_seq_length, truncation=True)
                 )
             )
         
-        elif task.type == "sequence_classification":               
+        elif task.task_type == "sequence_classification":               
             tasks.append(
                 SequenceClassification(
-                    dataset = load_dset(task.train_file, task.eval_file, task.test_file, task.tokens_idx, task.label_idx),
-                    name = task.name,
-                    y = [f"target_{i}" for i in range(len(task.label_idx))],
+                    dataset = load_dset(task.train_file, task.eval_file, task.test_file, task.tokens_idx, task.label_idx, task.task_name),
+                    name = task.task_name,
+                    y = [f"target_{task.task_name}_{i}" for i in range(len(task.label_idx))],
                     tokenizer_kwargs = frozendict(padding="max_length", max_length=args.max_seq_length, truncation=True)
                 )
             )
+    
+    print(f"[*] DATASETS REPORT:")
+    for task in tasks:
+        print(f"    {task.name} (y = {task.y})")
+        print(f"        train: {len(task.dataset['train'])}")
+        print(f"        dev:   {len(task.dataset['validation'])}")
+        print(f"        test:  {len(task.dataset['test'])}")
+    
     print(f"[*] Loaded {len(tasks)} tasks")
     print(f"[*] Tasks: {[task.name for task in tasks]}")
 

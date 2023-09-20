@@ -17,8 +17,8 @@
     "auto_find_batch_size": true, 
     
     "do_eval": false,
-    "do_train": false,
-    "do_predict": true,
+    "do_train": true,
+    "do_predict": false,
 
     "evaluation_strategy": "epoch",
     "drop_probability": 0.1,
@@ -27,11 +27,20 @@
     "tasks":[
         {
             "task_type": "token_classification",
-            "task_name": "sample",
-            "train_file": "./data/train.labels",
-            "test_file": "./data/dev.labels",
-            "eval_file": "./data/dev.labels",
-            "label_idx": [2,3],
+            "task_name": "ner",
+            "train_file": "./data/intent/train.txt",
+            "test_file": "./data/intent/valid.txt",
+            "eval_file": "./data/intent/test.txt",
+            "label_idx": [1],
+            "tokens_idx": 0
+        },
+        {
+            "task_type": "sequence_classification",
+            "task_name": "intent",
+            "train_file": "./data/intent/train.txt",
+            "test_file": "./data/intent/valid.txt",
+            "eval_file": "./data/intent/test.txt",
+            "label_idx": [2],
             "tokens_idx": 0
         }
     ]

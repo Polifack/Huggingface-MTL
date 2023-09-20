@@ -24,6 +24,7 @@ class TokenClassificationHead(nn.Module):
         if labels is not None:
             loss_fct = torch.nn.CrossEntropyLoss()
             labels = labels.long()
+            # print("[*] token_class labels=",labels)
 
             # Only keep active parts of the loss
             if attention_mask is not None:

@@ -19,51 +19,73 @@ def get_len(outputs):
 @dataclass
 class SequenceClassification(Task):
     task_type = "SequenceClassification"
+    name: str = "SequenceClassificationTask"
     dataset: Dataset = None
     data_collator = DefaultDataCollator()
-    s1: str = "sentence1"
-    s2: str = "sentence2"
-    y:  list|str = "target"
+    tokens: str = 'tokens'
+    y: str|list = 'target'
     num_labels: int = None
+    label_names: dict = None
 
     def __post_init__(self):
         super().__post_init__()
-        if not self.num_labels:
-            target = self.dataset[self.main_split].features[self.y]
-            
-            if "float" in target.dtype:
-                self.num_labels = 1
-            
-            elif hasattr(target, 'num_classes'):
-                self.num_labels = target.num_classes
-            
-            else:
-                self.num_labels = max(fc.flatten(self.dataset[self.main_split][self.y]))+1
+        print("[*] Initializing SequenceClassificationTask... with y:", self.y)
+        self.label_names = {}
+        self.num_labels  = {}
+        
+        if type(self.y) == str:
+            self.y = [self.y]
 
-        if type(self.dataset[self.main_split][self.y][0])==list and self.task_type=="SequenceClassification":
-            self.problem_type="multi_label_classification"
-            if set(fc.flatten(self.dataset[self.main_split][self.y]))!={0,1}:
-                def one_hot(x):
-                    x[self.y] = [float(i in x[self.y]) for i in range(self.num_labels)]
-                    return x
-                self.dataset=self.dataset.map(one_hot)
-            
-            self.num_labels=len(self.dataset[self.main_split][self.y][0])
-            self.dataset=self.dataset.cast_column(self.y, ds.Sequence(feature=ds.Value(dtype='float64')))
+        for y in self.y:
+            target = self.dataset[self.main_split].features[y]
+            self.num_labels[y] = target.feature.num_classes
+            self.label_names[y] = target.feature.names if target.feature.names else [None]
+        
+        print(f"[*] SequenceClassificationTask loaded {self.task_type} task with {self.num_labels} labels")
+        for k,v in self.label_names.items():
+            print(f"      {k} labels: {v}")
+
+    @staticmethod
+    def _align_labels_with_tokens(labels, word_ids):
+        new_labels = []
+        current_word = None
+        for word_id in word_ids:
+            if word_id is None:
+                new_labels.append(-100)
+            else:
+                label = labels[word_id]
+                new_labels.append(label)
+        return new_labels
 
     def check(self):
         features = self.dataset[self.main_split].features
         return self.s1 in features and self.y in features
 
     def preprocess_function(self, examples):
-        inputs = (
-            (examples[self.s1], examples[self.s2])
-            if self.s2 in examples
-            else (examples[self.s1],)
+        if examples[self.tokens] and type(examples[self.tokens][0]) == str:
+            unsqueeze, examples = True, {k:[v] for k,v in examples.items()}
+        tokenized_inputs = self.tokenizer(
+            examples[self.tokens],
+            is_split_into_words=True,
+            **self.tokenizer_kwargs
         )
-        outputs = self.tokenizer(*inputs, **self.tokenizer_kwargs)
-        outputs["task"] = [self.index] *get_len(examples)
-        return outputs
+        tokenized_inputs = self.tokenizer(
+            examples[self.tokens],
+            is_split_into_words=True,
+            **self.tokenizer_kwargs
+        )
+
+        for target_column in self.y:
+            all_labels = examples[target_column]
+            new_labels = []
+            
+            for i, labels in enumerate(all_labels):
+                word_ids = tokenized_inputs.word_ids(i)
+                new_labels.append(self._align_labels_with_tokens(labels, word_ids))
+            
+            tokenized_inputs[target_column] = new_labels        
+            tokenized_inputs['task_ids'] = [self.index]*get_len(tokenized_inputs)
+        return tokenized_inputs
 
     def compute_metrics(self, eval_pred):
         avg={}
