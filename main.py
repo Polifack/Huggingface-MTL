@@ -13,6 +13,7 @@ import warnings
 warnings.filterwarnings("ignore")
 
 import datasets
+import os
 from transformers import TrainingArguments
 from datasets import Sequence
 from datasets import ClassLabel
@@ -20,7 +21,9 @@ from datasets import ClassLabel
 def load_dset(train_path, dev_path, test_path, token_idx, label_idx, task_name):
     def read_col_file(file_path, token_idx, label_idx):
         with open(file_path, "r") as f:
-            sentences = [[]]
+            sentences = [[]] 
+            limit = -1
+
             for i, line in enumerate(f):                
                 line = line.strip()
                 if line:
@@ -36,15 +39,18 @@ def load_dset(train_path, dev_path, test_path, token_idx, label_idx, task_name):
                 else:
                     if sentences[-1]:
                         sentences.append([])
+
+                if limit != -1 and i > limit:
+                    break
             
             if not sentences[-1]:
                 sentences.pop()
 
-        # Convert sentences to Hugging Face Dataset format
         dataset = {
             "tokens": [[row[0] for row in sentence] for sentence in sentences],
+            "sentence": [" ".join([row[0] for row in sentence]) for sentence in sentences]
         }
-        
+
         for i, idx in enumerate(label_idx):
             dataset[f"target_{task_name}_{i}"] = [[row[i+1] for row in sentence] for sentence in sentences]
 
@@ -52,11 +58,9 @@ def load_dset(train_path, dev_path, test_path, token_idx, label_idx, task_name):
 
     train_dset = read_col_file(train_path, token_idx, label_idx)
     train_dset = datasets.Dataset.from_dict(train_dset)
-    # train_dset = None
     
     dev_dset = read_col_file(dev_path, token_idx, label_idx)
     dev_dset = datasets.Dataset.from_dict(dev_dset)
-    # dev_dset = None
     
     test_dset = read_col_file(test_path, token_idx, label_idx)
     test_dset = datasets.Dataset.from_dict(test_dset)
@@ -144,6 +148,8 @@ def predict_model(model, tasks, args):
     prediction = trainer.predict(model.test_dataset)
 
 if __name__ == "__main__":
+    print("[*] Changing CUDA device to GPU")
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
     args = argparse.ArgumentParser()
     args.add_argument("--config", type=str, help="training config file")

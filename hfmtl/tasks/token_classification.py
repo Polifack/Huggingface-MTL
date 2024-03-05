@@ -21,26 +21,30 @@ class TokenClassification:
     tokenizer_kwargs: fdict = fdict(padding="max_length", max_length=128, truncation=True)
 
     @staticmethod
-    def _align_labels_with_tokens(labels, word_ids):
+    def _align_labels_with_tokens(labels, restored_tokens):
         new_labels = []
-        current_word = None
-        for word_id in word_ids:
-            if word_id is None:
+        current_word = 0
+
+        for i in restored_tokens:
+            # special tokens
+            if i in ("<s>", "</s>", "<pad>", "<unk>"):
                 new_labels.append(-100)
 
-            elif word_id != current_word:
-                current_word = word_id
-                label = -100 if word_id is None else labels[word_id]
-                new_labels.append(label)
-            
+            # roberta tokenizer starts new words with 'Ġ'
+            # so we need to add the corresponding label
+            elif i.startswith("Ġ"):
+                current_word += 1
+                new_labels.append(labels[current_word])
+                
+            # when having a 'continuation' subword we just 
+            # append the label of the previous
             else:
-                label = labels[word_id]
-                new_labels.append(label)
+                new_labels.append(labels[current_word])
         
         return new_labels
 
     def __post_init__(self):
-        print("[*] Initializing TokenClassificationTask... with y:", self.y)
+        print("[*] Initializing TokenClassificationTask with target:", self.y)
         self.label_names = {}
         self.num_labels  = {}
         
@@ -66,31 +70,31 @@ class TokenClassification:
             tokenizer = self.tokenizer
         )
 
-    def preprocess_function(self, examples):
-        if examples[self.tokens] and type(examples[self.tokens][0]) == str:
-            unsqueeze, examples = True, {k:[v] for k,v in examples.items()}
-        
+    def preprocess_function(self, examples):        
         def get_len(outputs):
             try:
                 return len(outputs[fc.first(outputs)])
             except:
                 return 1
-        
+
         tokenized_inputs = self.tokenizer(
-            examples[self.tokens],
-            is_split_into_words=True,
+            examples['sentence'],
             **self.tokenizer_kwargs
         )
-
+        
         for target_column in self.y:
             all_labels = examples[target_column]
             new_labels = []
             
             for i, labels in enumerate(all_labels):
-                word_ids = tokenized_inputs.word_ids(i)
-                new_labels.append(self._align_labels_with_tokens(labels, word_ids))
+                sentence_input_ids = tokenized_inputs['input_ids'][i]
+                restored_tokens = self.tokenizer.convert_ids_to_tokens(sentence_input_ids)
+                new_labels.append(self._align_labels_with_tokens(labels, restored_tokens))
             
             tokenized_inputs[target_column] = new_labels        
             tokenized_inputs['task_ids'] = [self.index]*get_len(tokenized_inputs)
 
-        return tokenized_inputs     
+        return tokenized_inputs
+    
+    def decode_labels(self, labels):
+        return self.dataset[self.main_split].features[self.y[0]].feature.decode_batch(labels)

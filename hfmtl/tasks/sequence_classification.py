@@ -29,7 +29,7 @@ class SequenceClassification(Task):
 
     def __post_init__(self):
         super().__post_init__()
-        print("[*] Initializing SequenceClassificationTask... with y:", self.y)
+        print("[*] Initializing SequenceClassificationTask with y:", self.y)
         self.label_names = {}
         self.num_labels  = {}
         

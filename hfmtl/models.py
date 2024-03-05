@@ -84,12 +84,15 @@ class MultitaskDataloader:
             task_name = self.task_name_list[task_choice]
             yield next(dataloader_iter_dict[task_name])
 
-
 class MultiTaskModel(nn.Module):
     def __init__(self, model_name, do_train, do_eval, do_test, tasks):
         super().__init__()
-        
+
+        # load pretrained model and send to cuda device 
+        device = torch.cuda.current_device() if torch.cuda.is_available() else "cpu"
         self.encoder = AutoModel.from_pretrained(model_name)
+        self.encoder.to(device)
+
         tokenizer_kwargs = frozendict(padding="max_length", max_length=128, truncation=True, return_tensors="pt")
         self.tokenizer = AutoTokenizer.from_pretrained(model_name, **tokenizer_kwargs)
         self.output_heads = nn.ModuleDict()
@@ -102,25 +105,24 @@ class MultiTaskModel(nn.Module):
                     task.task_type, 
                     task.num_labels[subtask]
                 )
-                
-                print("=====> subtask = ", subtask)
                 self.output_heads[subtask] = decoder
 
         self.processed_tasks = self.preprocess_tasks(tasks, self.tokenizer)
         self.label_names     = {task.name: task.label_names for task in tasks}
+        print("[*] Created model with label names =", self.label_names)
 
         self.train_dataset   = {task.name: self.processed_tasks[task.name]['train'] for task in tasks} if do_train else None
         self.eval_dataset    = {task.name: self.processed_tasks[task.name]['validation'] for task in tasks} if do_eval else None
         self.test_dataset    = {task.name: self.processed_tasks[task.name]['test'] for task in tasks} if do_test else None
 
-        print("Created model with train dset =", self.train_dataset, type(self.train_dataset))
-        print("Created model with eval dset =", self.eval_dataset, type(self.eval_dataset))
-        print("Created model with test dset =", self.test_dataset, type(self.test_dataset))
+        print("[*] Created model with train dset =", self.train_dataset)
+        print("[*] Created model with eval dset =", self.eval_dataset)
+        print("[*] Created model with test dset =", self.test_dataset)
     
     def preprocess_tasks(self, tasks, tokenizer):      
         features_dict = {}
         for i, task in enumerate(tasks):
-            print("[*] Model preprocessing task: ", task.name,"***")
+            print("[*] Preprocessing task: ", task.name,"***")
             
             if hasattr(task, 'processed_features') and tokenizer == task.tokenizer:
                 features_dict[task.name] = task.processed_features
@@ -142,7 +144,7 @@ class MultiTaskModel(nn.Module):
                 )
 
             print("[*] Finished preprocessing task: ", task.name,"***")
-
+        
         return features_dict
     
     @staticmethod
@@ -180,8 +182,14 @@ class MultiTaskTrainer(transformers.Trainer):
         self.device = self.pretrained_transformer.device
         self.data_collator = NLPDataCollator(tasks)
         
-        print("[*] Init multitask trainer with tasks:", self.task_names)
-        print("[*] Label names are:", self.label_names)
+        # print("[*] Init HF-MTL trainer with tasks:", self.task_names)
+        # print("    Running on device:", self.device)
+        # print("    Evaluation strategy:", self.args.evaluation_strategy)
+        # print("    Logging strategy:", self.args.logging_strategy) 
+        # print("    Training:", self.args.do_train)
+        # print("    Evaluation:", self.args.do_eval)
+        # print("    Prediction:", self.args.do_predict)
+
 
     def get_single_train_dataloader(self, task_name, train_dataset):
         if self.train_dataset is None and self.args.do_train:
@@ -244,7 +252,7 @@ class MultiTaskTrainer(transformers.Trainer):
         test_dataloader = self.get_test_dataloader(test_dataset)
         start_time = time.time()
 
-        eval_loop = self.prediction_loop if self.args.use_legacy_prediction_loop else self.evaluation_loop
+        eval_loop = self.evaluation_loop
         output = eval_loop(
             test_dataloader, 
             description="Prediction", 
@@ -252,6 +260,7 @@ class MultiTaskTrainer(transformers.Trainer):
             metric_key_prefix=metric_key_prefix,
             return_preds=True
         )
+
         total_batch_size = self.args.eval_batch_size * self.args.world_size
         if f"{metric_key_prefix}_jit_compilation_time" in output.metrics:
             start_time += output.metrics[f"{metric_key_prefix}_jit_compilation_time"]
@@ -268,25 +277,32 @@ class MultiTaskTrainer(transformers.Trainer):
         self.control = self.callback_handler.on_predict(self.args, self.state, self.control, output.metrics)
         self._memory_tracker.stop_and_update_metrics(output.metrics)
 
+        print("[*] Prediction results:")
         for m in output.metrics:
-            print(m, output.metrics[m])
+            print('\t',m, output.metrics[m])
 
-        # restore labels
-        # for t in self.task_names:
-        #     label_names = self.label_names[t]
-        #     for sentence in label_names:
-        #         print(sentence)
+        
+        def restore_label_alignment(input_ids, label_ids):
+            '''
+            Restores the label_ids to match the input_ids by removing sub-word labels;
+            as we are using roberta tokenizer, we need to remove the labels corresponding to sub-words
+            (i.e. labels with corresponding de-tokenized input_ids starting with 'Ġ')
+            '''
+            new_labels = []
+            de_tokenized = self.tokenizer.convert_ids_to_tokens(input_ids, skip_special_tokens=True)
+            for i, token in enumerate(de_tokenized):
+                if token.startswith("Ġ"):
+                    new_labels.append(label_ids[i])
+            return new_labels
 
-        # error here
-        lbls_idx = 0
-        for step, inputs in enumerate(test_dataloader):
-            print("Step:", step,"/",len(test_dataloader))
-            for seq in inputs:
-                print(seq)
-                for task in self.task_names:
-                    label_names = self.label_names[task]
-                    print(label_names[lbls_idx])
-                lbls_idx += 1
+
+        for i, element in enumerate(test_dataset['parsing']):
+            # esto para pillar las predictions es un poco obtuso, checkear el eval_loop
+            preds = output.predictions['parsing'][0]['target_parsing_0'][0][i]
+            predicted_labels = [self.label_names['parsing']['target_parsing_0'][x] for x in preds]
+            fixed_labels = restore_label_alignment(element['input_ids'], predicted_labels)
+            print(element['sentence'],'\n',fixed_labels,'\n\n',)
+                    
 
         return PredictionOutput(predictions=output.predictions, label_ids=output.label_ids, metrics=output.metrics)
 
@@ -302,10 +318,12 @@ class MultiTaskTrainer(transformers.Trainer):
 
         predictions = {task: [] for task in self.task_names}
         label_ids   = {task: [] for task in self.task_names}
+
         for step, inputs in enumerate(dataloader):            
             print("Step:", step,"/",len(dataloader))
             
             loss, preds, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
+
             for task in self.task_names:
                 print("    Evaluating task:", task)
                 preds_task = preds[task]
@@ -346,7 +364,9 @@ class MultiTaskTrainer(transformers.Trainer):
                 
                 predictions[task].append(preds_i)
                 label_ids[task].append(lbls_i)
+                print("    Done evaluating task:", task)
 
+        
         return EvalLoopOutput(predictions=predictions, label_ids=label_ids, metrics=metrics_eval, num_samples = len(dataloader))
 
     def prediction_step(self, model, inputs, prediction_loss_only, ignore_keys=[]):
@@ -358,9 +378,11 @@ class MultiTaskTrainer(transformers.Trainer):
         
         logits_dict = {}
         labels_dict = {}
+        
         for task_name, label_names in self.label_names.items():
             logits_dict[task_name] = {}
             labels_dict[task_name] = {}
+        
             for label_name in label_names:
                 logits_dict[task_name][label_name] = outputs[label_name]
                 logits_dict[task_name][label_name] = np.argmax(outputs[label_name].detach().cpu().numpy(), axis=2)
@@ -373,6 +395,16 @@ class MultiTaskTrainer(transformers.Trainer):
     
     def compute_loss(self, model, inputs, return_outputs=False):
         keys = inputs[0].keys()
+
+        # print("[*] Computing loss at device:", self.args.device)
+        # print("    Available devices:", torch.cuda.device_count())
+        # print("    Current device:", torch.cuda.current_device())
+        # print("    Model device:", next(model.parameters()).device)
+        # print("    Current cuda used memory:", torch.cuda.memory_allocated())
+        # print("    Current cuda max memory:", torch.cuda.max_memory_allocated())
+        # print("    Current cuda cached memory:", torch.cuda.memory_cached())
+        # print("    Current cuda max cached memory:", torch.cuda.max_memory_cached())
+
 
         input_ids = torch.tensor([i['input_ids'] for i in inputs], device=self.args.device) if 'input_ids' in keys else None
         attention_mask = torch.tensor([i['attention_mask'] for i in inputs], device=self.args.device) if 'attention_mask' in keys else None        

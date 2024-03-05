@@ -4,21 +4,23 @@
     "resume_from_checkpoint": "./output/checkpoint-62250",
     "overwrite_output_dir": true,
 
-    "learning_rate": 1e-5,
+    "use_cpu": false,
+
+    "learning_rate": 5e-5,
     "weight_decay": 0.0001,
-    "num_train_epochs": 25,
-    "max_seq_length": 128,
+    "num_train_epochs": 3.0,
+    "max_seq_length": 64,
 
     "log_level": "critical",
     "logging_strategy": "epoch",
 
     "per_device_eval_batch_size": 64,
-    "per_device_train_batch_size": 16,
+    "per_device_train_batch_size": 64,
     "auto_find_batch_size": true, 
     
     "do_eval": false,
     "do_train": true,
-    "do_predict": false,
+    "do_predict": true,
 
     "evaluation_strategy": "epoch",
     "drop_probability": 0.1,
@@ -27,20 +29,12 @@
     "tasks":[
         {
             "task_type": "token_classification",
-            "task_name": "ner",
-            "train_file": "./data/intent/train.txt",
-            "test_file": "./data/intent/valid.txt",
-            "eval_file": "./data/intent/test.txt",
+            "task_name": "parsing",
+            "train_file": "./data/train.labels",
+            "test_file": "./data/dev.labels",
+            "eval_file": "./data/test.labels",
+            "label_names": ["absolute"],
             "label_idx": [1],
-            "tokens_idx": 0
-        },
-        {
-            "task_type": "sequence_classification",
-            "task_name": "intent",
-            "train_file": "./data/intent/train.txt",
-            "test_file": "./data/intent/valid.txt",
-            "eval_file": "./data/intent/test.txt",
-            "label_idx": [2],
             "tokens_idx": 0
         }
     ]
