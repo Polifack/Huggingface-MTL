@@ -51,6 +51,7 @@ def load_dset(train_path, dev_path, test_path, token_idx, label_idx, task_name):
             "sentence": [" ".join([row[0] for row in sentence]) for sentence in sentences]
         }
 
+        print(f"[*] Loading dataset from {file_path}")
         for i, idx in enumerate(label_idx):
             dataset[f"target_{task_name}_{i}"] = [[row[i+1] for row in sentence] for sentence in sentences]
 
@@ -64,7 +65,7 @@ def load_dset(train_path, dev_path, test_path, token_idx, label_idx, task_name):
     
     test_dset = read_col_file(test_path, token_idx, label_idx)
     test_dset = datasets.Dataset.from_dict(test_dset)
-
+    
     # Get all possible labels and cast to ClassLabel  
     for i in range(len(label_idx)):
         label_set = set()
@@ -75,7 +76,6 @@ def load_dset(train_path, dev_path, test_path, token_idx, label_idx, task_name):
         
         label_names = sorted(list(label_set))        
         
-        print(label_names, type(label_names))
         train_dset = train_dset.cast_column(f"target_{task_name}_{i}", Sequence(ClassLabel(names=label_names)))
         dev_dset = dev_dset.cast_column(f"target_{task_name}_{i}", Sequence(ClassLabel(names=label_names)))
         test_dset = test_dset.cast_column(f"target_{task_name}_{i}", Sequence(ClassLabel(names=label_names)))
@@ -144,8 +144,30 @@ def predict_model(model, tasks, args):
         compute_metrics = None,
         tokenizer = model.tokenizer
     )
-
     prediction = trainer.predict(model.test_dataset)
+    print("[*] Predicting on test dataset")
+    total_tokens = []
+    for _, task in enumerate(tasks):
+        task_name = task.name
+        print(task_name)
+        for i in range(len(model.test_dataset[task_name].to_dict()["tokens"])):
+            tokens = {'tokens': model.test_dataset[task_name].to_dict()["tokens"][i]}
+            print(tokens)
+            for j, y in enumerate(task.y):
+                preds = prediction.label_ids[task_name]
+                preds = preds[y][i]
+                print(f"[*] {y} preds: {preds}")
+                tokens[f"preds_{y}"] = preds
+            total_tokens.append(tokens)
+    
+    with open(f"{args.output_dir}/predictions.labels", "w") as f:
+        for tokens_dict in total_tokens:
+                for i in range(len(tokens_dict['tokens'])):
+                    f.write(f"{tokens_dict['tokens'][i]}\t")
+                    for j, y in enumerate(task.y):
+                        f.write(f"{tokens_dict[f'preds_{y}'][i]}\t")
+                    f.write("\n")
+    
 
 if __name__ == "__main__":
     print("[*] Changing CUDA device to GPU")

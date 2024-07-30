@@ -114,7 +114,7 @@ class MultiTaskModel(nn.Module):
         self.train_dataset   = {task.name: self.processed_tasks[task.name]['train'] for task in tasks} if do_train else None
         self.eval_dataset    = {task.name: self.processed_tasks[task.name]['validation'] for task in tasks} if do_eval else None
         self.test_dataset    = {task.name: self.processed_tasks[task.name]['test'] for task in tasks} if do_test else None
-
+       
         print("[*] Created model with train dset =", self.train_dataset)
         print("[*] Created model with eval dset =", self.eval_dataset)
         print("[*] Created model with test dset =", self.test_dataset)
@@ -278,10 +278,30 @@ class MultiTaskTrainer(transformers.Trainer):
         self._memory_tracker.stop_and_update_metrics(output.metrics)
 
         print("[*] Prediction results:")
+
+        decoded_predicted_labels = {}
+        # iterate over all tasks
+        for task in output.predictions.keys():
+            decoded_predicted_labels[task] = {}
+            
+            # iterate over all task targets
+            for target in output.predictions[task][0].keys():
+                decoded_predicted_labels[task][target] = []
+                
+                # recover the id2label dictionary for the current task target
+                current_task_labels_dictionary = self.label_names[task][target]
+                for sentences in output.predictions[task][0][target]:
+
+                    # parse all sentences
+                    for current_sentence in sentences:
+                        current_sentence_decoded = []
+                        for idx, l in enumerate(current_sentence):
+                            current_sentence_decoded.append(current_task_labels_dictionary[int(l)])
+                        decoded_predicted_labels[task][target].append(current_sentence_decoded)
+
         for m in output.metrics:
             print('\t',m, output.metrics[m])
 
-        
         def restore_label_alignment(input_ids, label_ids):
             '''
             Restores the label_ids to match the input_ids by removing sub-word labels;
@@ -291,20 +311,26 @@ class MultiTaskTrainer(transformers.Trainer):
             new_labels = []
             de_tokenized = self.tokenizer.convert_ids_to_tokens(input_ids, skip_special_tokens=True)
             for i, token in enumerate(de_tokenized):
-                if token.startswith("Ġ"):
+                if token.startswith("Ġ") or i==0:
                     new_labels.append(label_ids[i])
             return new_labels
+        
+        
+        fixed_labels = {}
+        for task in self.task_names:
+            test_dataset = test_dataset[task]
+            task_outputs = decoded_predicted_labels[task]
+            for target in task_outputs.keys():
+                task_target_outputs = task_outputs[target]
+                for i, sentence in enumerate(task_target_outputs):
+                    fixed_label_i = restore_label_alignment(test_dataset['input_ids'][i], sentence)
+                    if task not in fixed_labels:
+                        fixed_labels[task] = {}
+                    if target not in fixed_labels[task]:
+                        fixed_labels[task][target] = []
+                    fixed_labels[task][target].append(fixed_label_i)                  
 
-
-        for i, element in enumerate(test_dataset['parsing']):
-            # esto para pillar las predictions es un poco obtuso, checkear el eval_loop
-            preds = output.predictions['parsing'][0]['target_parsing_0'][0][i]
-            predicted_labels = [self.label_names['parsing']['target_parsing_0'][x] for x in preds]
-            fixed_labels = restore_label_alignment(element['input_ids'], predicted_labels)
-            print(element['sentence'],'\n',fixed_labels,'\n\n',)
-                    
-
-        return PredictionOutput(predictions=output.predictions, label_ids=output.label_ids, metrics=output.metrics)
+        return PredictionOutput(predictions=output.predictions, label_ids=fixed_labels, metrics=output.metrics)
 
     def evaluation_loop(self, 
                         dataloader: DataLoader, 

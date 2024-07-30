@@ -6,9 +6,9 @@
 
     "use_cpu": false,
 
-    "learning_rate": 5e-5,
+    "learning_rate": 5e-1,
     "weight_decay": 0.0001,
-    "num_train_epochs": 3.0,
+    "num_train_epochs": 1.0,
     "max_seq_length": 64,
 
     "log_level": "critical",
@@ -30,11 +30,13 @@
         {
             "task_type": "token_classification",
             "task_name": "parsing",
+
             "train_file": "./data/train.labels",
-            "test_file": "./data/dev.labels",
-            "eval_file": "./data/test.labels",
+            "eval_file": "./data/dev.labels",
+            "test_file": "./data/test.labels",
+            
             "label_names": ["absolute"],
-            "label_idx": [1],
+            "label_idx": [1,2],
             "tokens_idx": 0
         }
     ]

@@ -1,5 +1,6 @@
 tmp
 models
+.conda
 hfmtl/__pycache__
 hfmtl/heads/__pycache__
 hfmtl/tasks/__pycache__
