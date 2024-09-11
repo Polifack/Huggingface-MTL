@@ -81,6 +81,13 @@ class TokenClassification:
             examples['sentence'],
             **self.tokenizer_kwargs
         )
+
+        # fix tokenized_inputs attention_mask for roberta
+
+        tokenized_inputs['attention_mask'] = [
+            [int(i != self.tokenizer.pad_token_id) for i in input_ids] for input_ids in tokenized_inputs['input_ids']
+        ]
+            
         
         for target_column in self.y:
             all_labels = examples[target_column]

@@ -22,7 +22,7 @@ class SequenceClassificationHead(nn.Module):
 
         loss = None
         if labels is not None:
-            loss_fct = torch.nn.CrossEntropyLoss()
+            loss_fct = torch.nn.CrossEntropyLoss(ignore_index=-100)
             labels = labels.long()
 
             # Only keep active parts of the loss

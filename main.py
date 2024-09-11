@@ -23,7 +23,7 @@ def load_dset(train_path, dev_path, test_path, token_idx, label_idx, task_name):
         with open(file_path, "r") as f:
             sentences = [[]] 
             limit = -1
-
+            sentence_counter = 0
             for i, line in enumerate(f):                
                 line = line.strip()
                 if line:
@@ -35,14 +35,12 @@ def load_dset(train_path, dev_path, test_path, token_idx, label_idx, task_name):
                     if type(labels) == str:
                         labels = [labels]
                     sentences[-1].append((token, *labels))
-                
                 else:
                     if sentences[-1]:
                         sentences.append([])
-
-                if limit != -1 and i > limit:
-                    break
-            
+                        sentence_counter += 1
+                        if limit != -1 and sentence_counter>limit:
+                            break
             if not sentences[-1]:
                 sentences.pop()
 
@@ -144,34 +142,43 @@ def predict_model(model, tasks, args):
         compute_metrics = None,
         tokenizer = model.tokenizer
     )
+    
     prediction = trainer.predict(model.test_dataset)
+
     print("[*] Predicting on test dataset")
-    total_tokens = []
+    total = []
     for _, task in enumerate(tasks):
         task_name = task.name
-        print(task_name)
-        for i in range(len(model.test_dataset[task_name].to_dict()["tokens"])):
-            tokens = {'tokens': model.test_dataset[task_name].to_dict()["tokens"][i]}
-            print(tokens)
-            for j, y in enumerate(task.y):
-                preds = prediction.label_ids[task_name]
-                preds = preds[y][i]
-                print(f"[*] {y} preds: {preds}")
-                tokens[f"preds_{y}"] = preds
-            total_tokens.append(tokens)
+        test_dset_dict = model.test_dataset[task_name].to_dict()
+        for y in task.y:
+            print("current sentence length: ", len(prediction.label_ids[task_name][y]))
+            for i in range(len(prediction.label_ids[task_name][y])):
+                current_sentence = test_dset_dict["tokens"][i]
+                current_pred = {'tokens': current_sentence}                    
+                preds = prediction.label_ids[task_name][y][i]
+                current_pred[f"preds_{y}"] = preds
+                total.append(current_pred)
     
+    print("[*] Writing predictions to file")
     with open(f"{args.output_dir}/predictions.labels", "w") as f:
-        for tokens_dict in total_tokens:
-                for i in range(len(tokens_dict['tokens'])):
-                    f.write(f"{tokens_dict['tokens'][i]}\t")
-                    for j, y in enumerate(task.y):
-                        f.write(f"{tokens_dict[f'preds_{y}'][i]}\t")
-                    f.write("\n")
+        for tokens_dict in total:
+            if len(tokens_dict["tokens"]) != len(tokens_dict[f"preds_{y}"]):
+                print("FATAL ERROR: token length and prediction length do not match")
+                for i in range(len(tokens_dict["tokens"])):
+                    pred_i = tokens_dict[f"preds_{y}"][i] if i<len(tokens_dict[f"preds_{y}"]) else "N/A"
+                    print(tokens_dict["tokens"][i], pred_i)
+                exit(1)
+            f.write(str(tokens_dict)+"\n")
+
+            for i in range(len(tokens_dict["tokens"])):
+                f.write(f"{tokens_dict['tokens'][i]}\t{tokens_dict[f'preds_{y}'][i]}\n")
     
 
 if __name__ == "__main__":
     print("[*] Changing CUDA device to GPU")
     os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+    print("[*] Starting model on Device: ", torch.cuda.current_device())
+    
 
     args = argparse.ArgumentParser()
     args.add_argument("--config", type=str, help="training config file")
